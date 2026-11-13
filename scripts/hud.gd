@@ -257,7 +257,7 @@ func _status_lines() -> Array:
 		out.append(["Resident complaints: %d / %d" % [game.complaints, game.MAX_COMPLAINTS], BAD_COL if game.complaints > 0 else TODO_COL, 15])
 	out.append(["Battery %d%%   Fear %d%%   Stamina %d%%" % [int(p.battery), int(p.fear), int(p.stamina)], TODO_COL, 15])
 	out.append(["Score: %d" % game.score, Color(0.85, 0.85, 0.95), 15])
-	out.append(["You lose if fear hits 100%, 3 items are stolen" + (", 3 residents complain" if not game.call_spots.is_empty() else "") + ",", DIM_COL, 13])
+	out.append(["You lose if fear hits 100%%, %d items are stolen" % game.max_thefts() + (", 3 residents complain" if not game.call_spots.is_empty() else "") + ",", DIM_COL, 13])
 	out.append(["or you finish fewer than 60% of patrol orders by 6 AM.", DIM_COL, 13])
 	return out
 

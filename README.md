@@ -47,7 +47,7 @@ The score adapts to what is happening:
 The top-right **OBJECTIVES** box always shows your 3 most urgent jobs. Open it (Tab, or tap it) for the full, paused panel: **Objectives** (patrol orders, duties, tips), **Status** (intruders, thefts, score, lose conditions) and **Log** (every message so far). On your first shift it opens by itself.
 
 - **Follow your patrol orders.** Every hour the radio names 2–3 clocks (red blinking lights) to punch before the next hour. Finish at least 60% of the night's orders or you're fired.
-- **Stop the thieves.** You hear their footsteps as rings. They head for the valuables. Keep your flashlight on one until the ring fills to scare it off. Three thefts end your shift.
+- **Stop the thieves.** You hear their footsteps as rings. They head for the valuables. Keep your flashlight on one until the ring fills to scare it off. Four thefts end your shift. Thieves carrying loot are slower, and while the alarm is armed it announces "footsteps heading for the west door" and points an arrow at them. A Shadow touch costs you 10 seconds of the current check and 100 points.
 - **Watch your fear.** Darkness raises it. Your flashlight and the ceiling lamps calm you. At 100% you flee.
 - **Save your battery.** Toggle the light off when you can. Green blinking pickups are spare batteries.
 - **On Normal and Hard: the Shadow.** You only ever see its red eyes. It cannot move while it is in your beam.

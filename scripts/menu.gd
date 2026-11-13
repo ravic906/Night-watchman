@@ -113,7 +113,7 @@ func _ready() -> void:
 	_help.add_theme_color_override("font_color", Color(0.85, 0.85, 0.9))
 	_help.text = """Your shift runs 10 PM to 6 AM. Every hour the radio names clocks to punch (red lights) before the next hour - do at least 60% of the night's orders.
 Lock the doors, arm the alarm, keep the power on and board up smashed windows. Thieves will undo it all, and more of them come as dawn nears.
-Thieves (you hear their footsteps as rings) go for the valuables. Hold your flashlight on one to scare it off. Three thefts and you are done.
+Thieves (you hear their footsteps as rings) go for the valuables. Hold your flashlight on one to scare it off. Four thefts and you are done. With the alarm armed you are told when a thief runs for an exit with loot.
 Darkness raises your FEAR. Lamps and your flashlight calm you. Batteries (green blinks) recharge the light.
 On Normal and Hard something else walks the halls. It cannot move while it is in your beam.
 

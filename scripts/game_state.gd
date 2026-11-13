@@ -21,6 +21,9 @@ const DIFFICULTY := {
 		"sabotage_chance": 0.35, "lockpick_time": 8.0,
 		"radio_hours": 1, "rooms_per_check": 1, "late_interval_mult": 0.55, "crew_size": 2,
 		"window_break_time": 1.5, "pry_time": 6.0,
+		# Balance chosen from the data sweep: slower loot carriers, alarm tracks
+		# escapes, a Shadow touch costs time and score, 4 thefts allowed.
+		"escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
 	},
 	2: {
 		"intruder_max": 3, "intruder_interval": 28.0, "first_intruder": 15.0,
@@ -30,6 +33,9 @@ const DIFFICULTY := {
 		"sabotage_chance": 0.5, "lockpick_time": 6.5,
 		"radio_hours": 1, "rooms_per_check": 2, "late_interval_mult": 0.5, "crew_size": 3,
 		"window_break_time": 1.5, "pry_time": 6.0,
+		# Balance chosen from the data sweep: slower loot carriers, alarm tracks
+		# escapes, a Shadow touch costs time and score, 4 thefts allowed.
+		"escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
 	},
 	3: {
 		"intruder_max": 4, "intruder_interval": 22.0, "first_intruder": 10.0,
@@ -39,6 +45,9 @@ const DIFFICULTY := {
 		"sabotage_chance": 0.6, "lockpick_time": 5.0,
 		"radio_hours": 1, "rooms_per_check": 3, "late_interval_mult": 0.45, "crew_size": 3,
 		"window_break_time": 1.2, "pry_time": 5.0,
+		# Balance chosen from the data sweep: slower loot carriers, alarm tracks
+		# escapes, a Shadow touch costs time and score, 4 thefts allowed.
+		"escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
 	},
 }
 
