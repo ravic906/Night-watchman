@@ -83,6 +83,9 @@ var fear_grace := 0.0
 var desk_light: PointLight2D
 var near_device = null
 var entered := 0
+var escaped := 0
+var touches := 0
+var loot_recovered := 0
 var sabotages := 0
 
 var _intruder_timer := 0.0
@@ -284,10 +287,10 @@ func is_masked(pos: Vector2) -> bool:
 	return machines.any(func(m): return m.masks(pos))
 
 
-func add_noise(pos: Vector2, color: Color) -> void:
-	if is_masked(pos):
+func add_noise(pos: Vector2, color: Color, anywhere := false) -> void:
+	if is_masked(pos) and not anywhere:
 		return
-	if pos.distance_to(player.global_position) <= HEARING_RANGE:
+	if anywhere or pos.distance_to(player.global_position) <= HEARING_RANGE:
 		_noises.append({"pos": pos, "age": 0.0, "color": color})
 
 
@@ -338,7 +341,7 @@ func _physics_process(delta: float) -> void:
 		_end(false, "The residents complained to management. You're fired.")
 	elif player.fear >= 100.0:
 		_end(false, "Terror got the better of you. You fled your post.")
-	elif thefts >= MAX_THEFTS:
+	elif thefts >= max_thefts():
 		_end(false, "Too much was stolen on your watch.")
 	elif elapsed >= shift_len:
 		_end_of_shift()
@@ -700,8 +703,14 @@ func _update_spawns(delta: float) -> void:
 
 
 ## More thieves can be inside at once late in the night.
+func max_thefts() -> int:
+	return int(cfg.get("max_thefts", MAX_THEFTS))
+
+
 func intruder_cap() -> int:
 	var cap := int(cfg["intruder_max"])
+	if float(cfg.get("early_cap", 0)) > 0.0 and current_hour() < 2:
+		return mini(cap, 2)
 	if night_progress() >= 0.5:
 		cap += 1
 	if night_progress() >= 0.75:
@@ -786,6 +795,24 @@ func _spawn_battery() -> void:
 	batteries.append(b)
 
 
+## Where the Shadow reappears after a touch. Option "smart" also keeps it
+## away from the clocks you have to punch next.
+func _shadow_respawn_spot() -> Vector2:
+	if str(cfg.get("shadow_respawn", "far")) != "smart":
+		return _far_shadow_spawn()
+	var targets: Array = orders_open().filter(func(c): return not c.done) + _next_picks
+	var best: Vector2 = level.shadow_spawns[0]
+	var best_score := -INF
+	for p in level.shadow_spawns:
+		var score_p: float = p.distance_to(player.global_position)
+		for c in targets:
+			score_p = minf(score_p, p.distance_to(c.global_position) * 1.5)
+		if score_p > best_score:
+			best_score = score_p
+			best = p
+	return best
+
+
 func _far_shadow_spawn() -> Vector2:
 	var best: Vector2 = level.shadow_spawns[0]
 	for p in level.shadow_spawns:
@@ -847,6 +874,8 @@ func _update_music() -> void:
 
 
 func on_intruder_scared(_intruder, dropped_loot: bool) -> void:
+	if dropped_loot:
+		loot_recovered += 1
 	scared += 1
 	score += 150 if dropped_loot else 100
 	message("Thief scared off - they dropped the loot!" if dropped_loot else "Thief scared off!", 2.5)
@@ -854,21 +883,26 @@ func on_intruder_scared(_intruder, dropped_loot: bool) -> void:
 
 
 func on_item_grabbed(intruder, _valuable) -> void:
+	if float(cfg.get("escape_warning", 0)) > 0.0 and alarm_armed():
+		intruder.warned = true
+		message("ALARM: footsteps heading for the %s!" % intruder.exit_name, 3.5)
 	add_noise(intruder.global_position, Color(1.0, 0.4, 0.3))
 	message("You hear glass breaking!", 2.5)
 
 
 func on_theft(_intruder, valuable) -> void:
+	escaped += 1
 	thefts += 1
 	if GameState.autotest_survive:
 		valuable.stolen = false  # keep the building worth robbing in survive tests
 		valuable.refresh()
 	add_score(-(200))
-	message("Something was stolen! (%d/%d)" % [thefts, MAX_THEFTS], 3.0)
+	message("Something was stolen! (%d/%d)" % [thefts, max_thefts()], 3.0)
 	Music.stinger("theft")
 
 
 func on_shadow_caught(s) -> void:
+	touches += 1
 	player.fear = minf(100.0, player.fear + 30.0)
 	flash = 1.0
 	# Wake at the lit security desk with the light on and a moment to recover.
@@ -877,8 +911,12 @@ func on_shadow_caught(s) -> void:
 	player.flashlight_on = true
 	player.battery = maxf(player.battery, 25.0)
 	fear_grace = 5.0
-	s.reset_to(_far_shadow_spawn())
+	s.reset_to(_shadow_respawn_spot())
 	message("IT TOUCHED YOU. You come to at the security desk.", 3.5)
+	if float(cfg.get("touch_cost", 0)) > 0.0:
+		# Lost time: the clock jumps 10 s and the shaken watchman loses score.
+		elapsed += 10.0
+		add_score(-100)
 	Music.stinger("scare")
 
 
@@ -1043,6 +1081,9 @@ func _end(win: bool, reason: String) -> void:
 		"scared": scared,
 		"thefts": thefts,
 		"entered": entered,
+		"escaped": escaped,
+		"loot_recovered": loot_recovered,
+		"touches": touches,
 		"sabotages": sabotages,
 		"time": clock_text(),
 	}
@@ -1067,6 +1108,25 @@ func _autopilot() -> void:
 	var time_left := check_window_seconds() - (elapsed - float(_window.get("start", elapsed)))
 	var urgent: Array = orders_open().filter(func(c): return not c.done)
 	var pool: Array = urgent if (time_left < 22.0 and not urgent.is_empty()) else devices
+	# Like a player who sees or hears it: go after a thief carrying loot nearby
+	# (or anywhere, if the alarm is tracking it), unless clocks are urgent.
+	if not (time_left < 22.0 and not urgent.is_empty()):
+		var chase = null
+		var chase_d := INF
+		for it in intruders:
+			if it.state != Intruder.State.ESCAPE:
+				continue
+			var cd: float = it.global_position.distance_to(player.global_position)
+			if (cd < 450.0 or it.warned) and cd < chase_d:
+				chase_d = cd
+				chase = it
+		if chase != null:
+			player.auto_aim = (chase.global_position - player.global_position).normalized()
+			var cpath: PackedVector2Array = level.find_path(player.global_position, chase.global_position)
+			player.auto_move = Vector2.ZERO
+			if cpath.size() > 1 and chase_d > 120.0:
+				player.auto_move = (cpath[1] - player.global_position).normalized()
+			return
 	for dev in pool:
 		if dev.needs_action():
 			var d: float = dev.global_position.distance_to(player.global_position)

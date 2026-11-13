@@ -17,6 +17,10 @@ var lockpick_time := 6.0
 var door = null            # the entrance (door or window) this thief came in by
 ## A thief scared away from an entrance comes back once, somewhere else.
 var retries_left := 1
+## Escape warning (balance option): the alarm is tracking this loot carrier.
+var warned := false
+var exit_name := ""
+var _warn_timer := 0.0
 var _pick_total := 1.0
 ## Mall: the shutter this thief is forcing, and what it was doing before.
 var gate = null
@@ -166,6 +170,7 @@ func _run_for_exit(next_state: State) -> void:
 		if d < best_d:
 			best_d = d
 			best = e.global_position
+			exit_name = e.entrance_label()
 	_path = game.level.find_path(global_position, best)
 	_path_i = 0
 
@@ -270,16 +275,21 @@ func _physics_process(delta: float) -> void:
 				if _steal_left <= 0.0:
 					target.carrier = self
 					target.refresh()
-					game.on_item_grabbed(self, target)
 					_run_for_exit(State.ESCAPE)
+					game.on_item_grabbed(self, target)
 		State.ESCAPE:
+			if warned:
+				_warn_timer -= delta
+				if _warn_timer <= 0.0:
+					_warn_timer = 1.5
+					game.add_noise(global_position, Color(1.0, 0.35, 0.3), true)
 			if exposure >= expose_time * 0.8:
 				target.carrier = null
 				target.refresh()
 				target = null
 				game.on_intruder_scared(self, true)
 				_run_for_exit(State.FLEE)
-			elif _follow(delta, speed * 1.15):
+			elif _follow(delta, speed * float(game.cfg.get("escape_speed", 1.15))):
 				target.carrier = null
 				target.stolen = true
 				target.refresh()

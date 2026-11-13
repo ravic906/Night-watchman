@@ -250,7 +250,7 @@ func _status_lines() -> Array:
 	var out: Array = []
 	out.append(["%s  -  %s  -  %s" % [game.location.title, GameState.difficulty_name(), game.clock_text()], WARN_COL, 16])
 	out.append(["Intruders inside: %s" % (str(game.intruders_inside()) if game.alarm_armed() else "?? (arm the alarm to know)"), TODO_COL, 15])
-	out.append(["Items stolen: %d / %d" % [game.thefts, game.MAX_THEFTS], BAD_COL if game.thefts > 0 else TODO_COL, 15])
+	out.append(["Items stolen: %d / %d" % [game.thefts, game.max_thefts()], BAD_COL if game.thefts > 0 else TODO_COL, 15])
 	out.append(["Patrol orders done: %d / %d" % [game.punches, game.orders_total], TODO_COL, 15])
 	out.append(["Thieves scared off: %d" % game.scared, TODO_COL, 15])
 	if not game.call_spots.is_empty():
@@ -321,6 +321,9 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 		targets.append([c.global_position, c.flat, Color(1.0, 0.55, 0.15)])
 	for m in game.machines_running():
 		targets.append([m.global_position, m.machine_name, Color(1.0, 0.3, 0.25)])
+	for it in game.intruders:
+		if it.warned:
+			targets.append([it.global_position, "THIEF", Color(1.0, 0.25, 0.25)])
 	var centre := size / 2.0
 	var margin := 34.0
 	var bottom := 30.0 + (260.0 if GameState.use_touch_controls() else 0.0)  # keep clear of touch buttons

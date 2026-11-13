@@ -96,6 +96,11 @@ func _ready() -> void:
 			overrides["radio_hours"] = clampi(int(a.get_slice("=", 1)), 1, 4)
 		elif a.begins_with("--rooms="):
 			overrides["rooms_per_check"] = clampi(int(a.get_slice("=", 1)), 1, 5)
+		elif a.begins_with("--set="):
+			# Dev/balance testing: --set=key=value overrides any difficulty setting.
+			var kv := a.trim_prefix("--set=").split("=", true, 1)
+			if kv.size() == 2:
+				overrides[kv[0]] = float(kv[1]) if kv[1].is_valid_float() else kv[1]
 		elif a.begins_with("--seed="):
 			seed_value = int(a.get_slice("=", 1))
 		elif a.begins_with("--inputs="):
