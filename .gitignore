@@ -6,3 +6,4 @@ export/
 *.ipa
 android/
 build/
+__pycache__/
