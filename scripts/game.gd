@@ -883,11 +883,12 @@ func on_intruder_scared(_intruder, dropped_loot: bool) -> void:
 
 
 func on_item_grabbed(intruder, _valuable) -> void:
-	if float(cfg.get("escape_warning", 0)) > 0.0 and alarm_armed():
-		intruder.warned = true
-		message("ALARM: footsteps heading for the %s!" % intruder.exit_name, 3.5)
 	add_noise(intruder.global_position, Color(1.0, 0.4, 0.3))
 	message("You hear glass breaking!", 2.5)
+	# Posted last so the warning is the pop-up you actually see.
+	if float(cfg.get("escape_warning", 0)) > 0.0 and alarm_armed():
+		intruder.warned = true
+		message("ALARM: footsteps heading for the %s!" % intruder.exit_name, 4.0)
 
 
 func on_theft(_intruder, valuable) -> void:
@@ -917,6 +918,7 @@ func on_shadow_caught(s) -> void:
 		# Lost time: the clock jumps 10 s and the shaken watchman loses score.
 		elapsed += 10.0
 		add_score(-100)
+		_update_rounds()   # the radio reacts straight away if the hour rolled over
 	Music.stinger("scare")
 
 

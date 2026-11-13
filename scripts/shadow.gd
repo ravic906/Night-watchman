@@ -33,6 +33,20 @@ func _physics_process(delta: float) -> void:
 	lit = game.player.is_lit(global_position, 12.0)
 	if _wake > 0.0:
 		_wake -= delta
+	elif lit and global_position.distance_to(player.global_position) < 30.0:
+		# Lit but right on top of the watchman (who stood still): it recoils
+		# instead of sitting there forever.
+		var away: Vector2 = (global_position - player.global_position)
+		if away.length() < 1.0:
+			away = Vector2.RIGHT
+		var dest: Vector2 = global_position + away.normalized() * 48.0
+		if not game.level.is_wall(game.level.world_to_cell(dest)):
+			global_position = global_position.move_toward(dest, speed * 2.0 * delta)
+		_brush_cooldown = maxf(0.0, _brush_cooldown - delta)
+		if _brush_cooldown <= 0.0:
+			_brush_cooldown = 3.0
+			game.player.fear = minf(100.0, game.player.fear + 10.0)
+			game.message("You brush against something cold...", 2.0)
 	elif lit:
 		# Frozen by the beam - but never left blocking a one-tile doorway.
 		var cell: Vector2i = game.level.world_to_cell(global_position)

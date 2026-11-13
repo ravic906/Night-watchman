@@ -115,6 +115,9 @@ func _key_hint() -> String:
 func _objectives() -> Array:
 	var items: Array = []
 	var due: float = game.check_window_seconds() - (game.elapsed - float(game._window.get("start", game.elapsed)))
+	for it in game.intruders:
+		if it.warned and it.is_escaping():
+			items.append(["STOP THIEF - %s" % it.exit_name, Color(1.0, 0.3, 0.3), 120])
 	for c in game.calls_active():
 		items.append(["Check %s (%ds)" % [c.flat, maxi(0, int(c.time_left))], BAD_COL, 100 - c.time_left])
 	for m in game.machines_running():
@@ -339,7 +342,10 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 		var p := centre + dir * minf(absf(scale_x), absf(scale_y))
 		var col: Color = t[2]
 		var side := dir.orthogonal()
+		var big: float = 1.6 if t[1] == "THIEF" else 1.0
 		# A slim arrow with a tail, so its direction is unmistakable.
-		draw_line(p - dir * 16, p + dir * 2, col, 3.0)
-		draw_colored_polygon(PackedVector2Array([p + dir * 14, p - side * 7, p + side * 7]), col)
-		draw_string(font, p - dir * 22 - Vector2(40, -5), t[1], HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color(col, 0.9))
+		draw_line(p - dir * 16 * big, p + dir * 2, col, 3.0 * big)
+		draw_colored_polygon(PackedVector2Array([p + dir * 14 * big, p - side * 7 * big, p + side * 7 * big]), col)
+		# Label sits on the inward side of the arrow so it is never clipped.
+		var label_pos := p - dir * (30.0 * big + 8.0)
+		draw_string(font, label_pos - Vector2(45, -5), t[1], HORIZONTAL_ALIGNMENT_CENTER, 90, int(12 * big), Color(col, 0.95))

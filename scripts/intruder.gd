@@ -59,6 +59,10 @@ func _ready() -> void:
 		_enter()
 
 
+func is_escaping() -> bool:
+	return state == State.ESCAPE
+
+
 func _enter() -> void:
 	inside = true
 	if door != null and door.picker == self:
