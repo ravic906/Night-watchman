@@ -1,6 +1,6 @@
 # Night Watchman
 
-A top-down stealth/horror patrol game made in **Godot 4.3**. You are the night watchman of an old museum.
+A top-down stealth/horror patrol game made in **Godot 4.7.2**. You are the night watchman of an old museum.
 Your shift runs from 10 PM to 6 AM, and the building is not as empty as it should be.
 
 Everything is drawn in code, so there are no image or sound assets.
@@ -23,7 +23,7 @@ Everything is drawn in code, so there are no image or sound assets.
 There are three nights. Each one adds more thieves, a faster battery drain and more of the dark. Progress is saved.
 
 ## Running it
-1. Install [Godot 4.3](https://godotengine.org/download) (standard build, not .NET).
+1. Install [Godot 4.7.2](https://godotengine.org/download) (standard build, not .NET).
 2. Open Godot, choose **Import**, and select `project.godot` in this folder.
 3. Press **F5** (Play).
 
@@ -36,10 +36,16 @@ Developer flags (put them after `--` on the command line):
 ## Exporting to mobile
 The project already uses the mobile-friendly **Compatibility** renderer, a landscape orientation, a stretch mode that fits any screen, and touch controls that appear on touchscreen devices.
 
-**Android**
+**Android: install the ready-made APK**
+Install `NightWatchman.apk` on your phone: open it from your downloads and allow "Install unknown apps" when Android asks. It needs Android 7.0 or newer (64-bit or 32-bit ARM).
+That APK is **debug-signed**: fine for your own phones and testers, but not accepted by Google Play.
+
+**Android: build it yourself**
 1. In Godot: **Editor > Manage Export Templates > Download and Install**.
-2. Install the Android SDK and a JDK 17, then set their paths in **Editor > Editor Settings > Export > Android**.
-3. **Project > Export > Add... > Android**. Set a package name (e.g. `com.yourname.nightwatchman`), then export an APK (for testing) or an AAB (for Google Play).
+2. Install the Android SDK (build-tools 36.x, platform android-36) and a JDK 17+. Then set their paths in **Editor > Editor Settings > Export > Android**.
+3. **Project > Export**: the "Android" preset is already set up in `export_presets.cfg` (package `com.nightwatchman.game`, arm64 + armv7). Click **Export Project** to get an APK.
+   From the command line: `godot --headless --path . --export-debug "Android" build/NightWatchman.apk`
+4. For Google Play: create your own release keystore, set it in the preset's Keystore > Release fields, enable **Gradle Build**, and export an **AAB** with `--export-release`. Keep that keystore safe: you need it for every update.
 
 **iOS**: requires a Mac with Xcode. Add an iOS preset in **Project > Export**, export the Xcode project, then build it in Xcode.
 

@@ -5,3 +5,4 @@ export/
 *.aab
 *.ipa
 android/
+build/
