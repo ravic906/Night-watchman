@@ -49,7 +49,8 @@ func _draw() -> void:
 	# Top-left panel
 	draw_rect(Rect2(12, 12, 280, 132), Color(0, 0, 0, 0.45))
 	draw_string(font, Vector2(24, 44), game.clock_text(), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(0.95, 0.9, 0.6))
-	draw_string(font, Vector2(170, 44), "Night %d" % GameState.night, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.7, 0.75, 0.9))
+	draw_string(font, Vector2(160, 30), game.location.title, HORIZONTAL_ALIGNMENT_LEFT, 125, 14, Color(0.7, 0.75, 0.9))
+	draw_string(font, Vector2(160, 47), GameState.difficulty_name(), HORIZONTAL_ALIGNMENT_LEFT, 125, 13, Color(0.55, 0.6, 0.75))
 	var batt_col := Color(0.95, 0.85, 0.3) if p.battery > 15.0 else Color(1, 0.3, 0.2)
 	_bar(Vector2(24, 58), "Battery" if p.flashlight_on else "Battery (off)", p.battery, batt_col)
 	_bar(Vector2(24, 82), "Fear", fear, Color(0.8, 0.15, 0.25))
@@ -103,6 +104,17 @@ func _draw_duties(font: Font, size: Vector2) -> void:
 		lines.append(["[x] Windows secure", OK_COL, 15])
 	else:
 		lines.append(["[!] Windows broken: %d" % broken, BAD_COL, 15])
+	if not game.shutters.is_empty():
+		var shut: int = game.shutters_closed()
+		var all_shut: bool = shut == game.shutters.size()
+		lines.append(["%s Shutters down %d/%d" % ["[x]" if all_shut else "[ ]", shut, game.shutters.size()],
+				OK_COL if all_shut else TODO_COL, 15])
+	for c in game.calls_active():
+		lines.append(["[!] Call: %s (%ds)" % [c.flat, maxi(0, int(c.time_left))], BAD_COL, 15])
+	if not game.call_spots.is_empty() and game.complaints > 0:
+		lines.append(["Complaints %d/%d" % [game.complaints, game.MAX_COMPLAINTS], BAD_COL, 15])
+	for m in game.machines_running():
+		lines.append(["[!] %s %s" % [m.machine_name, "OVERHEATED" if m.overheated else "running"], BAD_COL, 15])
 	var dead: Array = game.breaker.dead_wings()
 	if dead.is_empty():
 		lines.append(["[x] Power OK", OK_COL, 15])

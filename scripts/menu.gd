@@ -1,8 +1,10 @@
 extends Control
-## Title screen: pick a night, read how to play.
+## Title screen: pick a location and a difficulty, read how to play.
 
 var _t := 0.0
 var _help: Label
+var _cards := {}       # location id -> Button
+var _diff_buttons := {} # difficulty -> Button
 
 
 func _ready() -> void:
@@ -14,7 +16,7 @@ func _ready() -> void:
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", 12)
-	box.custom_minimum_size = Vector2(520, 0)
+	box.custom_minimum_size = Vector2(640, 0)
 	center.add_child(box)
 
 	var title := Label.new()
@@ -30,33 +32,78 @@ func _ready() -> void:
 	sub.add_theme_color_override("font_color", Color(0.7, 0.75, 0.9))
 	box.add_child(sub)
 
-	box.add_child(_spacer(16))
+	box.add_child(_spacer(6))
 
-	for n in range(1, GameState.MAX_NIGHT + 1):
-		var b := _button(GameState.NIGHTS[n]["title"])
-		b.disabled = n > GameState.unlocked
-		var best := int(GameState.best_scores.get(str(n), 0))
-		if best > 0:
-			b.text += "   (best %d)" % best
-		b.pressed.connect(GameState.start_night.bind(n))
-		box.add_child(b)
+	# Location cards (2 x 2).
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	box.add_child(grid)
+	var loc_group := ButtonGroup.new()
+	for loc_id in GameState.LOCATIONS:
+		var def = GameState.location_def(loc_id)
+		var card := Button.new()
+		card.toggle_mode = true
+		card.button_group = loc_group
+		card.custom_minimum_size = Vector2(315, 92)
+		card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		card.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		card.add_theme_font_size_override("font_size", 14)
+		card.text = "%s\n%s" % [def.title.to_upper(), def.blurb]
+		card.pressed.connect(func():
+			GameState.location = loc_id
+			_refresh_best())
+		grid.add_child(card)
+		_cards[loc_id] = card
+	_cards[GameState.location].button_pressed = true
 
+	# Difficulty toggle.
+	var diff_row := HBoxContainer.new()
+	diff_row.add_theme_constant_override("separation", 8)
+	box.add_child(diff_row)
+	var diff_group := ButtonGroup.new()
+	for d in [1, 2, 3]:
+		var b := _button(GameState.DIFFICULTY_NAMES[d])
+		b.toggle_mode = true
+		b.button_group = diff_group
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(func():
+			GameState.difficulty = d
+			_refresh_best())
+		diff_row.add_child(b)
+		_diff_buttons[d] = b
+	_diff_buttons[GameState.difficulty].button_pressed = true
+
+	var start := _button("START SHIFT")
+	start.add_theme_font_size_override("font_size", 24)
+	start.custom_minimum_size = Vector2(0, 60)
+	start.pressed.connect(func(): GameState.start_shift())
+	box.add_child(start)
+	_refresh_best()
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	box.add_child(row)
 	var sound_btn := _button(_sound_label())
+	sound_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sound_btn.pressed.connect(func():
 		GameState.sound_enabled = not GameState.sound_enabled
 		Music.set_enabled(GameState.sound_enabled)
 		GameState.save_game()
 		sound_btn.text = _sound_label())
-	box.add_child(sound_btn)
+	row.add_child(sound_btn)
 
 	var help_btn := _button("How to play")
+	help_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	help_btn.pressed.connect(func(): _help.visible = not _help.visible)
-	box.add_child(help_btn)
+	row.add_child(help_btn)
 
 	if not OS.has_feature("mobile") and not OS.has_feature("web"):
 		var quit := _button("Quit")
+		quit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		quit.pressed.connect(func(): get_tree().quit())
-		box.add_child(quit)
+		row.add_child(quit)
 
 	_help = Label.new()
 	_help.visible = false
@@ -68,11 +115,20 @@ func _ready() -> void:
 Lock the doors, arm the alarm, keep the power on and board up smashed windows. Thieves will undo it all, and more of them come as dawn nears.
 Thieves (you hear their footsteps as rings) go for the valuables. Hold your flashlight on one to scare it off. Three thefts and you are done.
 Darkness raises your FEAR. Lamps and your flashlight calm you. Batteries (green blinks) recharge the light.
-From Night 2 something else walks the halls. It cannot move while it is in your beam.
+On Normal and Hard something else walks the halls. It cannot move while it is in your beam.
 
 Keyboard: WASD/arrows move, mouse aims, Shift runs, F/Space/right-click toggles the light, E uses (punch, lock, arm, reset, board).
 Touch: left side is a joystick, buttons on the right."""
 	box.add_child(_help)
+
+
+## Show each location's best score at the chosen difficulty.
+func _refresh_best() -> void:
+	for loc_id in _cards:
+		var def = GameState.location_def(loc_id)
+		var best := GameState.best_score(loc_id, GameState.difficulty)
+		var line := "Best (%s): %d" % [GameState.difficulty_name(), best] if best > 0 else ""
+		_cards[loc_id].text = "%s\n%s%s" % [def.title.to_upper(), def.blurb, "\n" + line if line != "" else ""]
 
 
 func _sound_label() -> String:

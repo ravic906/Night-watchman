@@ -8,6 +8,7 @@ var glow: Node2D
 var light: PointLight2D
 var on := true
 var dead := false
+var tint := Color(1.0, 0.85, 0.6)
 ## False while the breaker for this lamp's wing is off.
 var powered := true
 var wing := ""
@@ -19,7 +20,7 @@ func _ready() -> void:
 	light = PointLight2D.new()
 	light.texture = Flashlight.make_radial_texture(256)
 	light.texture_scale = RADIUS / 128.0
-	light.color = Color(1.0, 0.85, 0.6)
+	light.color = tint
 	light.energy = 0.9
 	light.shadow_enabled = true
 	add_child(light)

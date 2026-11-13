@@ -500,6 +500,75 @@ def make_pry():
     return normalize(lin_reverb(stereo(out), 0.3, 0.8), 0.75)
 
 
+def make_intercom():
+    """Apartment intercom: harsh buzz, then a two-note chime."""
+    t = env_t(0.6)
+    buzz = np.sign(np.sin(2 * np.pi * 220 * t)) * 0.3 + np.sin(2 * np.pi * 440 * t) * 0.2
+    buzz = lin_filter(buzz * np.minimum(1, t / 0.01) * np.minimum(1, (0.6 - t) / 0.02), hi=3000)
+    buf = np.zeros((int(SR * 1.8), 2))
+    place(buf, stereo(buzz), 0.0, wrap=False)
+    place(buf, stereo(bell(note("G5"), 0.9) * 0.6), 0.7, wrap=False)
+    place(buf, stereo(bell(note("D5"), 0.9) * 0.6), 0.95, wrap=False)
+    return normalize(lin_reverb(buf, 0.15, 0.5), 0.75)
+
+
+def make_shutter():
+    """Roll-down shutter: ratcheting metal rattle ending in a clang."""
+    r = np.random.default_rng(81)
+    t = env_t(1.4)
+    rattle = np.zeros_like(t)
+    tick_t = env_t(0.02)
+    for i in range(int(1.0 / 0.035)):
+        at = int(SR * i * 0.035)
+        tick = lin_filter(r.standard_normal(tick_t.size), lo=900, hi=5000) * np.exp(-tick_t / 0.006)
+        rattle[at: at + tick.size] += tick * r.uniform(0.3, 0.6)
+    clang_t = env_t(0.4)
+    clang = sum(np.sin(2 * np.pi * f * clang_t) for f in (310, 520, 790)) * np.exp(-clang_t / 0.12)
+    rattle[int(SR * 1.0): int(SR * 1.0) + clang.size] += clang * 0.4
+    return normalize(lin_reverb(stereo(rattle), 0.3, 1.0), 0.8)
+
+
+def make_shutter_force():
+    """Shutter being forced: a straining metal screech."""
+    t = env_t(1.0)
+    f = 900 + 250 * np.sin(2 * np.pi * 3.0 * t) + 120 * np.sin(2 * np.pi * 11 * t)
+    screech = np.sin(2 * np.pi * np.cumsum(f) / SR)
+    screech += 0.4 * np.sin(2 * np.pi * np.cumsum(f * 2.01) / SR)
+    env = np.minimum(1, t / 0.05) * np.minimum(1, (1.0 - t) / 0.2)
+    return normalize(lin_reverb(stereo(lin_filter(screech * env, lo=300, hi=6000)), 0.3, 0.9), 0.7)
+
+
+def make_machine_loop():
+    """Factory machine running: a loopable thumping, whining drone (LOOP-safe 4 s)."""
+    secs = 4.0
+    n = int(SR * secs)
+    t = np.arange(n) / SR
+    def qq(f):  # whole cycles in 4 s
+        return round(f * secs) / secs
+    hum = sum(np.sin(2 * np.pi * qq(f) * t) / i for i, f in enumerate((55, 110, 165, 330), start=1))
+    whine = np.sin(2 * np.pi * qq(1250) * t) * 0.08
+    pump = np.zeros(n)
+    th = thump(90, 45, 0.25, click=0.4)
+    for k in range(8):  # 2 strokes per second
+        at = int(SR * k * 0.5)
+        idx = (np.arange(th.size) + at) % n
+        np.add.at(pump, idx, th * 0.7)
+    r = np.random.default_rng(91)
+    grit = circ_filter(r.standard_normal(n), lo=1500, hi=6000) * 0.05
+    out = (hum * 0.35 + whine + pump + grit) * (0.85 + 0.15 * np.sin(2 * np.pi * qq(2) * t))
+    return normalize(stereo(out), 0.8)
+
+
+def make_overheat():
+    """Overheat klaxon: two-tone alarm, three times."""
+    buf = np.zeros((int(SR * 2.6), 2))
+    for i in range(6):
+        f = 520 if i % 2 == 0 else 390
+        b = beep(f, 0.36, 0.8) * 0.6
+        place(buf, stereo(b), i * 0.4, wrap=False)
+    return normalize(lin_reverb(buf, 0.3, 1.0), 0.85)
+
+
 # ---------------------------------------------------------------- output
 
 def write_ogg(path, x, quality=4):
@@ -578,6 +647,11 @@ def main():
         "radio": make_radio(),
         "board": make_board(),
         "pry": make_pry(),
+        "intercom": make_intercom(),
+        "shutter": make_shutter(),
+        "shutter_force": make_shutter_force(),
+        "machine_loop": make_machine_loop(),
+        "overheat": make_overheat(),
     }
     for i in range(4):
         stingers[f"step_{i + 1}"] = make_step(100 + i)

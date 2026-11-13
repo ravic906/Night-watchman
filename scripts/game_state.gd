@@ -1,17 +1,19 @@
 extends Node
-## Autoload: night settings, progress, save data, scene flow and input map.
+## Autoload: locations, difficulty, progress, save data, scene flow and input map.
 
 const SAVE_PATH := "user://night_watchman.cfg"
-const MAX_NIGHT := 3
+
+## Locations to guard, in menu order (scripts/maps/<id>.gd).
+const LOCATIONS := ["museum", "apartment", "mall", "factory"]
+const DIFFICULTY_NAMES := {1: "Easy", 2: "Normal", 3: "Hard"}
 
 const MENU_SCENE := "res://scenes/menu.tscn"
 const GAME_SCENE := "res://scenes/game.tscn"
 const END_SCENE := "res://scenes/end_screen.tscn"
 
-## Difficulty for each night.
-const NIGHTS := {
+## Settings for each difficulty (1 = Easy, 2 = Normal, 3 = Hard).
+const DIFFICULTY := {
 	1: {
-		"title": "Night 1 - First Shift",
 		"intruder_max": 2, "intruder_interval": 35.0, "first_intruder": 20.0,
 		"intruder_speed": 70.0, "expose_time": 1.3,
 		"battery_drain": 1.1, "fear_dark": 1.6,
@@ -21,7 +23,6 @@ const NIGHTS := {
 		"window_break_time": 1.5, "pry_time": 6.0,
 	},
 	2: {
-		"title": "Night 2 - Something Else Is Here",
 		"intruder_max": 3, "intruder_interval": 28.0, "first_intruder": 15.0,
 		"intruder_speed": 82.0, "expose_time": 1.5,
 		"battery_drain": 1.4, "fear_dark": 2.2,
@@ -31,7 +32,6 @@ const NIGHTS := {
 		"window_break_time": 1.5, "pry_time": 6.0,
 	},
 	3: {
-		"title": "Night 3 - The Long Dark",
 		"intruder_max": 4, "intruder_interval": 22.0, "first_intruder": 10.0,
 		"intruder_speed": 95.0, "expose_time": 1.7,
 		"battery_drain": 1.7, "fear_dark": 2.8,
@@ -42,8 +42,9 @@ const NIGHTS := {
 	},
 }
 
-var night := 1
-var unlocked := 1
+var difficulty := 2
+var location := "museum"
+## Best score per "location:difficulty".
 var best_scores := {}
 var sound_enabled := true
 var last_result := {}
@@ -64,8 +65,17 @@ func _ready() -> void:
 	autotest_survive = args.has("--survive")
 	force_touch = args.has("--touch")
 	for a in args:
-		if a.begins_with("--night="):
-			night = clampi(int(a.trim_prefix("--night=")), 1, MAX_NIGHT)
+		if a.begins_with("--night="):   # old alias for difficulty
+			difficulty = clampi(int(a.trim_prefix("--night=")), 1, 3)
+		elif a.begins_with("--difficulty="):
+			var want := a.trim_prefix("--difficulty=").to_lower()
+			for k in DIFFICULTY_NAMES:
+				if DIFFICULTY_NAMES[k].to_lower() == want:
+					difficulty = k
+		elif a.begins_with("--location="):
+			var loc := a.trim_prefix("--location=")
+			if loc in LOCATIONS:
+				location = loc
 		elif a.begins_with("--start-cell="):
 			var xy := a.trim_prefix("--start-cell=").split(",")
 			if xy.size() == 2:
@@ -73,7 +83,14 @@ func _ready() -> void:
 		elif a.begins_with("--screenshot="):
 			_take_screenshot_later(a.trim_prefix("--screenshot="))
 	_setup_input()
+	var cli_difficulty := difficulty
+	var cli_location := location
 	load_game()
+	var arg_list := Array(args)
+	if arg_list.any(func(x): return x.begins_with("--night=") or x.begins_with("--difficulty=")):
+		difficulty = cli_difficulty
+	if arg_list.any(func(x): return x.begins_with("--location=")):
+		location = cli_location
 
 
 ## Dev helper: `-- --screenshot=/path/shot.png` saves a frame after 3 s and quits.
@@ -86,15 +103,33 @@ func _take_screenshot_later(path: String) -> void:
 
 
 func settings() -> Dictionary:
-	return NIGHTS[night]
+	return DIFFICULTY[difficulty]
+
+
+func difficulty_name() -> String:
+	return DIFFICULTY_NAMES[difficulty]
+
+
+func location_def(loc_id := ""):
+	if loc_id == "":
+		loc_id = location
+	return load("res://scripts/maps/%s.gd" % loc_id).new()
+
+
+func best_score(loc_id: String, diff: int) -> int:
+	return int(best_scores.get("%s:%d" % [loc_id, diff], 0))
 
 
 func use_touch_controls() -> bool:
 	return force_touch or DisplayServer.is_touchscreen_available()
 
 
-func start_night(n: int) -> void:
-	night = clampi(n, 1, MAX_NIGHT)
+func start_shift(loc_id := "", diff := 0) -> void:
+	if loc_id != "":
+		location = loc_id
+	if diff > 0:
+		difficulty = clampi(diff, 1, 3)
+	save_game()
 	get_tree().change_scene_to_file(GAME_SCENE)
 
 
@@ -102,8 +137,7 @@ func finish_night(result: Dictionary) -> void:
 	last_result = result
 	Engine.time_scale = 1.0
 	if result.get("win", false):
-		unlocked = maxi(unlocked, mini(night + 1, MAX_NIGHT))
-		var key := str(night)
+		var key := "%s:%d" % [location, difficulty]
 		best_scores[key] = maxi(int(best_scores.get(key, 0)), int(result.get("score", 0)))
 	save_game()
 	get_tree().change_scene_to_file(END_SCENE)
@@ -117,8 +151,9 @@ func save_game() -> void:
 	if autotest:
 		return
 	var cfg := ConfigFile.new()
-	cfg.set_value("progress", "unlocked", unlocked)
 	cfg.set_value("progress", "best_scores", best_scores)
+	cfg.set_value("settings", "location", location)
+	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.set_value("settings", "sound", sound_enabled)
 	cfg.save(SAVE_PATH)
 
@@ -127,8 +162,15 @@ func load_game() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return
-	unlocked = clampi(int(cfg.get_value("progress", "unlocked", 1)), 1, MAX_NIGHT)
-	best_scores = cfg.get_value("progress", "best_scores", {})
+	# Old saves stored best scores per night number; keep only the new keys.
+	var saved: Dictionary = cfg.get_value("progress", "best_scores", {})
+	best_scores = {}
+	for k in saved:
+		if str(k).contains(":"):
+			best_scores[k] = saved[k]
+	var loc: String = cfg.get_value("settings", "location", "museum")
+	location = loc if loc in LOCATIONS else "museum"
+	difficulty = clampi(int(cfg.get_value("settings", "difficulty", 2)), 1, 3)
 	sound_enabled = bool(cfg.get_value("settings", "sound", true))
 
 

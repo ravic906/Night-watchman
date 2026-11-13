@@ -15,6 +15,11 @@ const AlarmPanel = preload("res://scripts/alarm_panel.gd")
 const BreakerBox = preload("res://scripts/breaker_box.gd")
 const OutsideDoor = preload("res://scripts/outside_door.gd")
 const WindowPane = preload("res://scripts/window.gd")
+const Shutter = preload("res://scripts/shutter.gd")
+const CallSpot = preload("res://scripts/call_spot.gd")
+const Machine = preload("res://scripts/machine.gd")
+
+const MAX_COMPLAINTS := 3
 
 const SHIFT_SECONDS := 360.0     # 10 PM -> 6 AM
 const START_HOUR := 22
@@ -38,6 +43,16 @@ var shadows: Array = []
 var batteries: Array = []
 var doors: Array = []
 var windows: Array = []
+## Location twists.
+var shutters: Array = []
+var call_spots: Array = []
+var machines: Array = []
+var complaints := 0
+var calls_answered := 0
+var twist_events := 0
+var _call_timer := 25.0
+## The location being guarded (map_def.gd instance).
+var location
 ## Every way into the building: doors + windows.
 var entrances: Array = []
 var alarm = null
@@ -97,10 +112,11 @@ func _ready() -> void:
 	glow_layer.follow_viewport_enabled = true
 	add_child(glow_layer)
 
+	location = GameState.location_def()
 	level = Level.new()
 	level.name = "Level"
 	world.add_child(level)
-	level.build()
+	level.build(location)
 	glow_layer.add_child(level.wall_node)
 
 	fx = Node2D.new()
@@ -109,9 +125,15 @@ func _ready() -> void:
 	glow_layer.add_child(fx)
 
 	for pos in level.lamps:
-		lamps.append(_spawn(WallLamp, pos))
+		var lamp = _spawn(WallLamp, pos, false)
+		lamp.tint = location.theme["lamp"]
+		world.add_child(lamp)
+		lamps.append(lamp)
 	for pos in level.valuables:
-		valuables.append(_spawn(Valuable, pos))
+		var v = _spawn(Valuable, pos, false)
+		v.style = location.loot
+		world.add_child(v)
+		valuables.append(v)
 	for cp in level.checkpoints:
 		var node = _spawn(Checkpoint, cp["pos"], false)
 		node.cp_name = cp["name"]
@@ -122,9 +144,10 @@ func _ready() -> void:
 
 	alarm = _spawn(AlarmPanel, level.alarm_pos)
 	breaker = _spawn(BreakerBox, level.breaker_pos)
-	for pos in level.entries:
-		var door = _spawn(OutsideDoor, pos, false)
-		door.door_name = "west" if pos.x < level.world_size().x / 2.0 else "east"
+	for e in level.entries:
+		var door = _spawn(OutsideDoor, e["pos"], false)
+		door.door_name = e["name"]
+		door.inward = level.inward_of(e["pos"])
 		world.add_child(door)
 		doors.append(door)
 	for w in level.windows:
@@ -132,8 +155,26 @@ func _ready() -> void:
 		win.room = w["name"]
 		world.add_child(win)
 		windows.append(win)
+	for sh in level.shutters:
+		var node = _spawn(Shutter, sh["pos"], false)
+		node.shop = sh["name"]
+		node.game = self
+		world.add_child(node)
+		shutters.append(node)
+	for c in level.call_spots:
+		var node = _spawn(CallSpot, c["pos"], false)
+		node.flat = c["name"]
+		world.add_child(node)
+		call_spots.append(node)
+	for m in level.machines:
+		var node = _spawn(Machine, m["pos"], false)
+		node.machine_name = m["name"]
+		node.game = self
+		world.add_child(node)
+		machines.append(node)
 	entrances = doors + windows
-	devices = checkpoints + [alarm, breaker] + doors + windows
+	devices = checkpoints + [alarm, breaker] + doors + windows + shutters + call_spots + machines
+	_assign_shop_gates()
 
 	player = Player.new()
 	player.name = "Watchman"
@@ -161,8 +202,8 @@ func _ready() -> void:
 		hud_layer.add_child(touch)
 
 	Music.play_game()
-	message(cfg["title"], 4.0)
-	message("Lock both outside doors and arm the alarm in the lobby.", 6.0)
+	message("%s - %s" % [location.title, GameState.difficulty_name()], 4.0)
+	message(location.duty_hint, 6.0)
 	message("Every hour the radio tells you which clocks to punch.", 6.0)
 
 
@@ -201,7 +242,14 @@ func clock_text() -> String:
 	return "%d:%02d %s" % [h12, minute, "PM" if hour >= 12 else "AM"]
 
 
+## True if a running machine drowns out sounds at `pos` (factory twist).
+func is_masked(pos: Vector2) -> bool:
+	return machines.any(func(m): return m.masks(pos))
+
+
 func add_noise(pos: Vector2, color: Color) -> void:
+	if is_masked(pos):
+		return
 	if pos.distance_to(player.global_position) <= HEARING_RANGE:
 		_noises.append({"pos": pos, "age": 0.0, "color": color})
 
@@ -231,6 +279,7 @@ func _physics_process(delta: float) -> void:
 	_update_events(delta)
 	_update_music()
 	_update_doors(delta)
+	_update_calls(delta)
 
 	for b in batteries.duplicate():
 		if b.global_position.distance_to(player.global_position) < 26.0:
@@ -243,6 +292,8 @@ func _physics_process(delta: float) -> void:
 		player.fear = minf(player.fear, 90.0)
 		if elapsed >= shift_len:
 			_end_of_shift()
+	elif complaints >= MAX_COMPLAINTS:
+		_end(false, "The residents complained to management. You're fired.")
 	elif player.fear >= 100.0:
 		_end(false, "Terror got the better of you. You fled your post.")
 	elif thefts >= MAX_THEFTS:
@@ -334,7 +385,7 @@ func _update_interaction(delta: float) -> void:
 
 func sabotage_targets() -> Array:
 	# Jamming only matters for clocks on the current orders.
-	return checkpoints.filter(func(c): return c.ordered and not c.done) + [alarm, breaker]
+	return checkpoints.filter(func(c): return c.ordered and not c.done) + [alarm, breaker] + machines
 
 
 func alarm_armed() -> bool:
@@ -469,7 +520,7 @@ func on_intruder_entered(_intruder, door) -> void:
 	var where: String = door.entrance_label() if door != null else "?"
 	if door != null and door in doors:
 		Music.sfx_at("door_creak", door.global_position, 0.0, randf_range(0.85, 1.05), 1400.0)
-	if alarm_armed():
+	if alarm_armed() and door != null:
 		message("ALARM: break-in at the %s! (%d inside)" % [where, intruders_inside()], 3.5)
 		Music.stinger("alarm_chime", -2.0)
 
@@ -638,7 +689,7 @@ func _update_events(delta: float) -> void:
 			message(["A door creaks somewhere.", "Footsteps? No... just the pipes.", "Something fell over."].pick_random(), 2.5)
 			player.fear = minf(100.0, player.fear + 3.0)
 		2:
-			if GameState.night >= 3 and live_lamps.size() > 3:
+			if GameState.difficulty >= 3 and live_lamps.size() > 3:
 				live_lamps.pick_random().kill()
 				message("A bulb bursts somewhere in the dark.", 3.0)
 				player.fear = minf(100.0, player.fear + 6.0)
@@ -703,6 +754,135 @@ func on_shadow_caught(s) -> void:
 	Music.stinger("scare")
 
 
+# --- location twists ---------------------------------------------------------
+
+## Mall: which shutter guards each valuable (the one that, closed, cuts it off).
+func _assign_shop_gates() -> void:
+	if shutters.is_empty():
+		return
+	for sh in shutters:
+		level.set_cell_solid(sh.global_position, true)
+	for v in valuables:
+		var spot: Vector2 = v.global_position + Vector2(0, 26)
+		if not level.find_path(level.player_spawn, spot).is_empty():
+			continue
+		for sh in shutters:
+			level.set_cell_solid(sh.global_position, false)
+			var reachable := not level.find_path(level.player_spawn, spot).is_empty()
+			level.set_cell_solid(sh.global_position, true)
+			if reachable:
+				v.gate = sh
+				break
+	for sh in shutters:
+		level.set_cell_solid(sh.global_position, false)
+
+
+func shutter_at(pos: Vector2):
+	for sh in shutters:
+		if sh.global_position.distance_to(pos) < 30.0:
+			return sh
+	return null
+
+
+func shutters_closed() -> int:
+	return shutters.filter(func(s): return s.closed).size()
+
+
+func on_shutter_closed(sh) -> void:
+	score += 25
+	message("The %s shutter is down." % sh.shop, 2.0)
+	Music.sfx_at("shutter", sh.global_position, -2.0, 1.0, 1200.0)
+
+
+func on_shutter_forced(sh) -> void:
+	sabotages += 1
+	twist_events += 1
+	add_noise(sh.global_position, Color(1.0, 0.5, 0.3))
+	message("Metal screeches - the %s shutter was forced!" % sh.shop, 3.0)
+
+
+## Apartment: residents call the intercom about noises.
+func _update_calls(delta: float) -> void:
+	if call_spots.is_empty():
+		return
+	for c in call_spots:
+		if c.active and c.time_left <= 0.0:
+			c.active = false
+			complaints += 1
+			score -= 50
+			message("%s gave up waiting and complained. (%d/%d)" % [c.flat, complaints, MAX_COMPLAINTS], 3.5)
+	_call_timer -= delta
+	if _call_timer > 0.0:
+		return
+	_call_timer = randf_range(45.0, 70.0) / float(cfg["event_mult"]) * lerpf(1.0, 0.75, night_progress())
+	var idle := call_spots.filter(func(c): return not c.active)
+	if idle.is_empty():
+		return
+	var spot = idle.pick_random()
+	var real := randf() < 0.45 and _any_loot_left()
+	spot.activate(real)
+	twist_events += 1
+	Music.stinger("intercom", -2.0)
+	message("Intercom: %s hears noises. Check it within a minute." % spot.flat, 4.0)
+	if real:
+		# A thief already inside the flat (came over the balcony).
+		var it = _spawn(Intruder, spot.global_position, false)
+		it.game = self
+		it.door = null
+		it.retries_left = 0
+		it.speed = cfg["intruder_speed"]
+		it.expose_time = cfg["expose_time"]
+		it.sabotage_chance = 0.0
+		intruders.append(it)
+		world.add_child(it)
+
+
+func on_call_answered(c) -> void:
+	calls_answered += 1
+	score += 60
+	var close := intruders.any(func(it): return it.global_position.distance_to(c.global_position) < 320.0)
+	if c.real and close:
+		message("The resident points down the hall: \"Someone's in here!\"", 3.0)
+		player.fear = minf(100.0, player.fear + 4.0)
+	elif c.real:
+		message("%s: \"They ran off when you buzzed!\"" % c.flat, 2.5)
+	else:
+		message(["%s: false alarm - the radiator again.", "%s: false alarm - just the cat.",
+				"%s: false alarm - a neighbour's TV."].pick_random() % c.flat, 2.5)
+
+
+func calls_active() -> Array:
+	return call_spots.filter(func(c): return c.active)
+
+
+## Factory: machines.
+func on_machine_started(m) -> void:
+	sabotages += 1
+	twist_events += 1
+	message("%s roars into life. You can't hear anything near it." % m.machine_name, 3.5)
+
+
+func on_machine_stopped(m) -> void:
+	score += 40
+	message("%s shut down." % m.machine_name, 2.0)
+
+
+func on_machine_overheat(m) -> void:
+	var wing: String = level.wing_of(m.global_position)
+	breaker.circuits[wing] = false
+	breaker.refresh()
+	for lamp in lamps:
+		if lamp.wing == wing:
+			lamp.set_powered(false)
+	player.fear = minf(100.0, player.fear + 8.0)
+	Music.sfx_at("overheat", m.global_position, 0.0, 1.0, 2600.0)
+	message("%s OVERHEATS - the %s wing loses power!" % [m.machine_name, wing], 4.0)
+
+
+func machines_running() -> Array:
+	return machines.filter(func(m): return m.running)
+
+
 func _end_of_shift() -> void:
 	if orders_total > 0 and float(punches) / orders_total < 0.6:
 		_end(false, "6:00 AM. You skipped too many patrol orders - you're fired.")
@@ -721,7 +901,10 @@ func _end(win: bool, reason: String) -> void:
 	var result := {
 		"win": win,
 		"reason": reason,
-		"night": GameState.night,
+		"location": location.title,
+		"difficulty": GameState.difficulty_name(),
+		"complaints": complaints,
+		"twist_events": twist_events,
 		"score": maxi(0, score),
 		"punches": punches,
 		"punches_total": orders_total,
@@ -736,6 +919,8 @@ func _end(win: bool, reason: String) -> void:
 	}
 	print("Shift ended: ", result)
 	if GameState.autotest:
+		print("AUTOTEST TWIST: %s shutters down=%d/%d, calls answered=%d complaints=%d, machines running=%d, twist events=%d" % [
+			location.id, shutters_closed(), shutters.size(), calls_answered, complaints, machines_running().size(), twist_events])
 		print("AUTOTEST DUTIES: windows broken=%d boarded=%d, alarm armed=%s cut=%s, doors locked %d/%d, dead wings=%s, jammed clocks=%d" % [
 			windows_broken(), windows.filter(func(w): return w.pane == WindowPane.Pane.BOARDED).size(),
 			alarm.armed, alarm.cut, doors_locked(), doors.size(), breaker.dead_wings(),
@@ -764,7 +949,7 @@ func _autopilot() -> void:
 		if dist < near:
 			near = dist
 			player.auto_aim = (it.global_position - player.global_position).normalized()
-	if target != null and best > 20.0:
+	if target != null and best > target.interact_range - 14.0:
 		var path: PackedVector2Array = level.find_path(player.global_position, target.global_position)
 		if path.size() > 1:
 			player.auto_move = (path[1] - player.global_position).normalized()

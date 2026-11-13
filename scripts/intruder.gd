@@ -4,7 +4,7 @@ extends Node2D
 ## grabs it and runs for the nearest door.
 ## Keep your flashlight on them long enough and they bolt empty-handed.
 
-enum State { PICK, SNEAK, STEAL, ESCAPE, FLEE, GO_SABOTAGE, SABOTAGE }
+enum State { PICK, SNEAK, STEAL, ESCAPE, FLEE, GO_SABOTAGE, SABOTAGE, GO_FORCE, FORCE }
 
 const STEAL_TIME := 3.0
 
@@ -18,6 +18,10 @@ var door = null            # the entrance (door or window) this thief came in by
 ## A thief scared away from an entrance comes back once, somewhere else.
 var retries_left := 1
 var _pick_total := 1.0
+## Mall: the shutter this thief is forcing, and what it was doing before.
+var gate = null
+var _resume := State.SNEAK
+var _blocked_at := Vector2.INF
 
 var state := State.SNEAK
 var target = null          # valuable
@@ -79,9 +83,59 @@ func _pick_target() -> void:
 		_run_for_exit(State.FLEE)
 		return
 	target = options.pick_random()
+	if target.gate != null and target.gate.closed:
+		_go_force(target.gate, State.SNEAK)
+		return
 	state = State.SNEAK
 	_path = game.level.find_path(global_position, target.global_position + Vector2(0, 26))
 	_path_i = 0
+
+
+## Walk up to a closed shutter (from whichever side we are on) to force it.
+func _go_force(sh, resume: State) -> void:
+	gate = sh
+	_resume = resume
+	state = State.GO_FORCE
+	var best := PackedVector2Array()
+	for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+		var spot: Vector2 = sh.global_position + d * 48.0
+		if game.level.is_cell_solid(spot) or game.level.is_wall(game.level.world_to_cell(spot)):
+			continue
+		var p: PackedVector2Array = game.level.find_path(global_position, spot)
+		if not p.is_empty() and (best.is_empty() or p.size() < best.size()):
+			best = p
+	_path = best
+	_path_i = 0
+	if best.is_empty():
+		gate = null
+		_run_for_exit(State.FLEE)
+
+
+## Carry on with what we were doing before a shutter got in the way.
+func _resume_after_gate() -> void:
+	if gate != null and gate.picker == self:
+		gate.picker = null
+		gate.refresh()
+	gate = null
+	match _resume:
+		State.ESCAPE, State.FLEE:
+			_run_for_exit(_resume)
+		State.GO_SABOTAGE:
+			if device != null:
+				state = State.GO_SABOTAGE
+				_path = game.level.find_path(global_position, device.global_position)
+				_path_i = 0
+			else:
+				_pick_target()
+		_:
+			_pick_target()
+
+
+func _drop_loot() -> void:
+	if target != null and target.carrier == self:
+		target.carrier = null
+		target.refresh()
+		target = null
 
 
 ## Is the reserved device still worth sabotaging (the guard may have
@@ -119,11 +173,15 @@ func _run_for_exit(next_state: State) -> void:
 func _follow(delta: float, spd: float) -> bool:
 	if _path_i >= _path.size():
 		return true
+	# A shutter came down in front of us.
+	if game.level.is_cell_solid(_path[_path_i]):
+		_blocked_at = _path[_path_i]
+		return false
 	var to := _path[_path_i] - global_position
 	var step := spd * delta
 	var before := floori(_walk_phase / PI)
 	_walk_phase += delta * spd * 0.08
-	if floori(_walk_phase / PI) != before:
+	if floori(_walk_phase / PI) != before and not game.is_masked(global_position):
 		var running := state == State.FLEE or state == State.ESCAPE
 		Music.sfx_at("step" if running else "sneak", global_position,
 				-4.0 if running else -6.0, randf_range(0.85, 1.05), 700.0)
@@ -141,7 +199,7 @@ func _work_noise(delta: float, volume_db: float, sound := "lockpick") -> void:
 	_work_sound -= delta
 	if _work_sound <= 0.0:
 		_work_sound = randf_range(0.7, 1.1)
-		if sound != "":
+		if sound != "" and not game.is_masked(global_position):
 			Music.sfx_at(sound, global_position, volume_db, randf_range(0.9, 1.1), 900.0)
 		game.add_noise(global_position, Color(1.0, 0.6, 0.3))
 
@@ -230,9 +288,51 @@ func _physics_process(delta: float) -> void:
 		State.FLEE:
 			if _follow(delta, speed * 1.9):
 				_leave()
+		State.GO_FORCE:
+			if exposure >= expose_time:
+				_drop_loot()
+				gate = null
+				game.on_intruder_scared(self, false)
+				_run_for_exit(State.FLEE)
+			elif not gate.closed:
+				_resume_after_gate()
+			elif _follow(delta, speed):
+				state = State.FORCE
+				_work_left = gate.force_time()
+				_pick_total = _work_left
+		State.FORCE:
+			if gate.picker == null:
+				gate.picker = self
+			if exposure >= expose_time * 0.8:
+				_drop_loot()
+				if gate.picker == self:
+					gate.picker = null
+					gate.refresh()
+				gate = null
+				game.on_saboteur_caught(self)
+				_run_for_exit(State.FLEE)
+			elif not gate.closed:
+				_resume_after_gate()
+			elif gate.picker == self:
+				_work_left -= delta
+				gate.pick_progress = clampf(1.0 - _work_left / _pick_total, 0.0, 1.0)
+				_work_noise(delta, -1.0, "shutter_force")
+				if _work_left <= 0.0:
+					var g = gate
+					g.picker = null
+					g.force_open()
+					_resume_after_gate()
+
+	# Blocked by a closed shutter on the way: force it, then carry on.
+	if _blocked_at != Vector2.INF and not _gone:
+		var at := _blocked_at
+		_blocked_at = Vector2.INF
+		var sh = game.shutter_at(at)
+		if sh != null and state in [State.SNEAK, State.ESCAPE, State.FLEE, State.GO_SABOTAGE]:
+			_go_force(sh, state)
 
 	# Footsteps you can hear (not see) when they are moving nearby.
-	if state not in [State.STEAL, State.PICK, State.SABOTAGE]:
+	if state not in [State.STEAL, State.PICK, State.SABOTAGE, State.FORCE]:
 		_step_timer -= delta
 		if _step_timer <= 0.0:
 			_step_timer = randf_range(2.5, 5.0)
@@ -248,6 +348,9 @@ func _physics_process(delta: float) -> void:
 func _leave(was_inside := true) -> void:
 	_gone = true
 	_release_device()
+	if gate != null and gate.picker == self:
+		gate.picker = null
+		gate.refresh()
 	if was_inside and inside:
 		game.on_intruder_exit(self, global_position)
 		Music.sfx_at("door_slam", global_position, -2.0, randf_range(0.9, 1.05), 1400.0)
@@ -266,7 +369,7 @@ func _draw() -> void:
 	draw_line(facing * 7 + side * 3, facing * 7 - side * 3, Color(0.85, 0.75, 0.6), 2)  # eyes slit
 	if state == State.ESCAPE:
 		draw_circle(-facing * 12, 8, Color(0.4, 0.32, 0.2))  # loot bag
-	if state == State.SABOTAGE or state == State.PICK:
+	if state in [State.SABOTAGE, State.PICK, State.FORCE]:
 		draw_line(facing * 10, facing * 20, Color(0.7, 0.7, 0.75), 2)  # tool
 
 

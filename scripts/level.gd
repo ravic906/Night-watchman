@@ -1,52 +1,9 @@
 extends Node2D
-## The building. Parsed from an ASCII map, then turned into wall collisions,
-## light occluders, a pathfinding grid and code-drawn floors/walls.
-##
-## Legend:
-##   #  wall              .  floor
-##   P  player spawn      1-5 punch-clock checkpoints
-##   V  valuable          L  wall lamp
-##   E  outside door (intruders come and go here)
-##   S  shadow spawn
-##   A  alarm panel       B  breaker box
-##   W  window in an outer wall (thieves can smash in)
+## The building. Built from a location definition (scripts/maps/*.gd): an
+## ASCII map turned into wall collisions, light occluders, a pathfinding grid
+## and code-drawn floors/walls. See scripts/maps/map_def.gd for the legend.
 
 const TILE := 48
-
-const MAP := [
-	"#####W#########################W########",
-	"#..........#.........#.................#",
-	"#....V.....#....V....#......V.....V....#",
-	"#..........#.........#.................#",
-	"#.....1....#....2....#.........3.......#",
-	"#..L.......#.........#.......L.........#",
-	"#####.######...L.....######.############",
-	"#....................A.................#",
-	"#.........L.........................L..#",
-	"E..................P...................E",
-	"#......................................#",
-	"#......................................#",
-	"#######.#########.####.######.##########",
-	"#........B..#.............#............#",
-	"#...V.......#....V....V...#.....V......#",
-	"#.......4...#.............#............#",
-	"#...........#......L......#.......5....#",
-	"#..L........#.............#..L.........#",
-	"#.....S.....#.............#........S...#",
-	"#####W###########################W######",
-]
-
-const CHECKPOINT_NAMES := ["Archive", "Gallery", "Storage", "Basement", "Office"]
-
-const ROOM_LABELS := [
-	["ARCHIVE", Vector2i(1, 1)],
-	["GALLERY", Vector2i(12, 1)],
-	["STORAGE", Vector2i(22, 1)],
-	["LOBBY", Vector2i(16, 7)],
-	["BASEMENT", Vector2i(1, 13)],
-	["VAULT", Vector2i(13, 13)],
-	["OFFICE", Vector2i(27, 13)],
-]
 
 const WALL_LAYER := 1
 const DOOR_LAYER := 4
@@ -57,9 +14,16 @@ var player_spawn := Vector2.ZERO
 var checkpoints: Array = []   # [{ "name": String, "pos": Vector2 }]
 var valuables: Array[Vector2] = []
 var lamps: Array[Vector2] = []
-var entries: Array[Vector2] = []
+## Location being guarded (a map_def.gd instance).
+var def
+## Outside doors / windows / shutters / call spots / machine panels:
+## [{ "name": String, "pos": Vector2 }] in reading order.
+var entries: Array = []
+var windows: Array = []
+var shutters: Array = []
+var call_spots: Array = []
+var machines: Array = []
 var alarm_pos := Vector2.ZERO
-var windows: Array = []   # [{ "name": String, "pos": Vector2 }]
 var breaker_pos := Vector2.ZERO
 var shadow_spawns: Array[Vector2] = []
 var floor_cells: Array[Vector2i] = []
@@ -71,6 +35,8 @@ var wall_node: Node2D
 var _walls := {}
 var _doors := {}
 var _windows := {}
+var _machinery := {}
+var _shutter_cells := {}
 ## Interior doorways (one-tile gaps in a wall) -> seconds since last swing.
 var _doorways := {}
 var _floor_seed := []
@@ -82,12 +48,18 @@ static func unshaded_material() -> CanvasItemMaterial:
 	return m
 
 
-func build() -> void:
-	height = MAP.size()
-	width = (MAP[0] as String).length()
+func _named(list: Array, names: Array, pos: Vector2, fallback: String) -> void:
+	var i := list.size()
+	list.append({"pos": pos, "name": names[i] if i < names.size() else "%s %d" % [fallback, i + 1]})
+
+
+func build(location) -> void:
+	def = location
+	height = def.map.size()
+	width = (def.map[0] as String).length()
 	var cp_slots := {}
 	for y in height:
-		var row: String = MAP[y]
+		var row: String = def.map[y]
 		for x in width:
 			var ch := row[x]
 			var cell := Vector2i(x, y)
@@ -95,9 +67,19 @@ func build() -> void:
 			match ch:
 				"#":
 					_walls[cell] = true
+				"K":
+					_walls[cell] = true
+					_machinery[cell] = true
 				"E":
 					_doors[cell] = true
-					entries.append(pos)
+					_named(entries, def.door_names, pos, "door")
+				"H":
+					_shutter_cells[cell] = true
+					_named(shutters, def.shutter_names, pos, "Shop")
+				"F":
+					_named(call_spots, def.call_names, pos, "Flat")
+				"M":
+					_named(machines, def.machine_names, pos, "Machine")
 				"P":
 					player_spawn = pos
 				"V":
@@ -109,26 +91,27 @@ func build() -> void:
 				"W":
 					_doors[cell] = true
 					_windows[cell] = true
-					var top := y < height / 2
-					var left := x < width / 2
-					windows.append({"pos": pos, "name": ("Archive" if left else "Storage") if top else ("Basement" if left else "Office")})
+					_named(windows, def.window_names, pos, "window")
 				"A":
 					alarm_pos = pos
 				"B":
 					breaker_pos = pos
 				"1", "2", "3", "4", "5":
 					cp_slots[int(ch) - 1] = pos
-			if ch != "#":
+			if ch != "#" and ch != "K":
 				floor_cells.append(cell)
-	for i in CHECKPOINT_NAMES.size():
+	for i in def.checkpoint_names.size():
 		if cp_slots.has(i):
-			checkpoints.append({"name": CHECKPOINT_NAMES[i], "pos": cp_slots[i]})
+			checkpoints.append({"name": def.checkpoint_names[i], "pos": cp_slots[i]})
 
 	for cell in floor_cells:
-		if _doors.has(cell):
+		if _doors.has(cell) or _shutter_cells.has(cell):
 			continue
-		var lr := _walls.has(cell + Vector2i.LEFT) and _walls.has(cell + Vector2i.RIGHT)
-		var ud := _walls.has(cell + Vector2i.UP) and _walls.has(cell + Vector2i.DOWN)
+		# A doorway is a one-tile gap in a thin wall (not a narrow corridor).
+		var lr := _walls.has(cell + Vector2i.LEFT) and _walls.has(cell + Vector2i.RIGHT) \
+				and not _walls.has(cell + Vector2i(-1, -1)) and not _walls.has(cell + Vector2i(-1, 1))
+		var ud := _walls.has(cell + Vector2i.UP) and _walls.has(cell + Vector2i.DOWN) \
+				and not _walls.has(cell + Vector2i(-1, -1)) and not _walls.has(cell + Vector2i(1, -1))
 		if lr or ud:
 			_doorways[cell] = 99.0
 
@@ -219,11 +202,30 @@ func world_to_cell(pos: Vector2) -> Vector2i:
 ## Which breaker circuit a position belongs to.
 func wing_of(pos: Vector2) -> String:
 	var x := world_to_cell(pos).x
-	if x < 12:
+	if x < def.wing_bounds.x:
 		return "West"
-	if x >= 26:
+	if x >= def.wing_bounds.y:
 		return "East"
 	return "Centre"
+
+
+## Direction from an edge cell (door/window) towards the inside of the building.
+func inward_of(pos: Vector2) -> Vector2:
+	var cell := world_to_cell(pos)
+	for d in [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.DOWN, Vector2i.UP]:
+		var n: Vector2i = cell + d
+		if n.x >= 0 and n.y >= 0 and n.x < width and n.y < height and not _walls.has(n):
+			return Vector2(d)
+	return Vector2.ZERO
+
+
+## Make a cell impassable (or passable again) for pathfinding.
+func set_cell_solid(pos: Vector2, solid: bool) -> void:
+	astar.set_point_solid(world_to_cell(pos), solid)
+
+
+func is_cell_solid(pos: Vector2) -> bool:
+	return astar.is_point_solid(world_to_cell(pos))
 
 
 func is_doorway(cell: Vector2i) -> bool:
@@ -268,7 +270,7 @@ func find_path(from: Vector2, to: Vector2) -> PackedVector2Array:
 func random_floor_far_from(pos: Vector2, min_dist: float) -> Vector2:
 	for i in 40:
 		var cell: Vector2i = floor_cells.pick_random()
-		if _doors.has(cell):
+		if _doors.has(cell) or _shutter_cells.has(cell):
 			continue
 		var p := cell_to_world(cell)
 		if p.distance_to(pos) >= min_dist:
@@ -281,21 +283,24 @@ func _draw() -> void:
 	for cell in floor_cells:
 		var r := Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE)
 		var checker := (cell.x + cell.y) % 2 == 0
-		var base := Color(0.36, 0.33, 0.29) if checker else Color(0.31, 0.29, 0.26)
+		var base: Color = def.theme["floor_a"] if checker else def.theme["floor_b"]
 		draw_rect(r, base)
 		var s: float = _floor_seed[cell.y * width + cell.x]
 		if s > 0.82:
 			# A crack or scuff on some tiles.
 			var p := r.position + Vector2(8 + s * 20, 10)
-			draw_line(p, p + Vector2(14, 18 * s), Color(0.2, 0.18, 0.16), 1.5)
-		draw_rect(r, Color(0.22, 0.2, 0.18), false, 1.0)
+			draw_line(p, p + Vector2(14, 18 * s), def.theme["crack"], 1.5)
+		draw_rect(r, def.theme["grout"], false, 1.0)
 
 
 func _draw_walls() -> void:
-	var fill := Color(0.11, 0.12, 0.18)
-	var edge := Color(0.22, 0.25, 0.36)
+	var fill: Color = def.theme["wall"]
+	var edge: Color = def.theme["wall_edge"]
 	for cell in _walls:
 		var r := Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE)
+		if _machinery.has(cell):
+			_draw_machinery(cell, r)
+			continue
 		wall_node.draw_rect(r, fill)
 		# Highlight edges that face a floor tile.
 		if not _walls.has(cell + Vector2i.DOWN) and cell.y + 1 < height:
@@ -315,10 +320,20 @@ func _draw_walls() -> void:
 	for cell in _doorways:
 		_draw_door(cell, _doorways[cell])
 	var font := ThemeDB.fallback_font
-	for label in ROOM_LABELS:
+	for label in def.room_labels:
 		var cell: Vector2i = label[1]
 		wall_node.draw_string(font, Vector2(cell.x * TILE + 8, cell.y * TILE + 22), label[0],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.55, 0.6, 0.8, 0.35))
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, def.theme["label"])
+
+
+## Machinery and racks: steel blocks with rivets and hazard edges.
+func _draw_machinery(cell: Vector2i, r: Rect2) -> void:
+	wall_node.draw_rect(r, Color(0.2, 0.22, 0.24))
+	wall_node.draw_rect(r.grow(-4), Color(0.26, 0.28, 0.3))
+	wall_node.draw_circle(r.position + Vector2(8, 8), 2.0, Color(0.4, 0.42, 0.45))
+	wall_node.draw_circle(r.end - Vector2(8, 8), 2.0, Color(0.4, 0.42, 0.45))
+	if not _machinery.has(cell + Vector2i.DOWN):
+		wall_node.draw_line(Vector2(r.position.x, r.end.y - 2), r.end - Vector2(0, 2), Color(0.8, 0.65, 0.1, 0.6), 3.0)
 
 
 ## A door leaf hinged on the doorway's wall, standing open. After the

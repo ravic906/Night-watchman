@@ -9,7 +9,7 @@ func _ready() -> void:
 	add_child(center)
 	var r: Dictionary = GameState.last_result
 	var win: bool = r.get("win", false)
-	var night: int = r.get("night", GameState.night)
+	var where := "%s - %s" % [r.get("location", "?"), r.get("difficulty", "?")]
 
 	if GameState.autotest:
 		print("AUTOTEST RESULT: ", r)
@@ -36,21 +36,12 @@ func _ready() -> void:
 	var stats := Label.new()
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats.add_theme_font_size_override("font_size", 18)
-	stats.text = "Night %d   -   ended at %s\nPatrol orders done: %d / %d\nIntruders: %d got in, %d scared off\nSabotage attempts that worked: %d\nItems stolen: %d\nScore: %d" % [
-		night, r.get("time", "?"), r.get("punches", 0), r.get("punches_total", 10),
+	stats.text = "%s   -   ended at %s\nPatrol orders done: %d / %d\nIntruders: %d got in, %d scared off\nSabotage attempts that worked: %d\nItems stolen: %d\nScore: %d" % [
+		where, r.get("time", "?"), r.get("punches", 0), r.get("punches_total", 10),
 		r.get("entered", 0), r.get("scared", 0), r.get("sabotages", 0), r.get("thefts", 0), r.get("score", 0)]
 	box.add_child(stats)
 
-	if win and night >= GameState.MAX_NIGHT:
-		var fin := Label.new()
-		fin.text = "You survived every night. The building is yours to guard - for now."
-		fin.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		fin.add_theme_color_override("font_color", Color(0.95, 0.9, 0.6))
-		box.add_child(fin)
-
-	if win and night < GameState.MAX_NIGHT:
-		box.add_child(_button("Start Night %d" % (night + 1), GameState.start_night.bind(night + 1)))
-	box.add_child(_button("Retry Night %d" % night, GameState.start_night.bind(night)))
+	box.add_child(_button("Retry", GameState.start_shift))
 	box.add_child(_button("Main Menu", GameState.go_to_menu))
 
 

@@ -4,6 +4,8 @@ extends Node2D
 
 var glow: Node2D
 var door_name := "west"
+## Points from the door into the building (set by the game from the level).
+var inward := Vector2.RIGHT
 var locked := false
 var progress := 0.0
 var interact_range := 62.0
@@ -75,14 +77,14 @@ func _process(_delta: float) -> void:
 
 func _draw_glow() -> void:
 	# Padlock icon on the inside face of the door.
-	var x := 30.0 if door_name == "west" else -30.0
+	var off := inward * 30.0
 	var c := Color(0.35, 1.0, 0.45, 0.85) if locked else Color(1.0, 0.3, 0.2, 0.85)
-	glow.draw_rect(Rect2(x - 6, -2, 12, 10), c)
+	glow.draw_rect(Rect2(off.x - 6, off.y - 2, 12, 10), c)
 	if locked:
-		glow.draw_arc(Vector2(x, -2), 4.5, PI, TAU, 10, c, 2.0)
+		glow.draw_arc(Vector2(off.x, off.y - 2), 4.5, PI, TAU, 10, c, 2.0)
 	else:
-		glow.draw_arc(Vector2(x + 4, -5), 4.5, PI, TAU, 10, c, 2.0)
+		glow.draw_arc(Vector2(off.x + 4, off.y - 5), 4.5, PI, TAU, 10, c, 2.0)
 	if picker != null:
 		glow.draw_arc(Vector2.ZERO, 22, -PI / 2, -PI / 2 + TAU * pick_progress, 24, Color(1, 0.4, 0.3, 0.9), 3)
 	if progress > 0.0:
-		glow.draw_arc(Vector2(x, 3), 22, -PI / 2, -PI / 2 + TAU * progress, 32, Color(1, 0.9, 0.5), 4)
+		glow.draw_arc(Vector2(off.x, off.y + 3), 22, -PI / 2, -PI / 2 + TAU * progress, 32, Color(1, 0.9, 0.5), 4)
