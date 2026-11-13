@@ -122,6 +122,7 @@ func _ready() -> void:
 		var touch := TouchControls.new()
 		hud_layer.add_child(touch)
 
+	Music.play_game()
 	message(cfg["title"], 4.0)
 	message("Punch all 5 clocks before 2 AM, then again before 6 AM.", 5.0)
 
@@ -187,6 +188,7 @@ func _physics_process(delta: float) -> void:
 	_update_fear(delta)
 	_update_spawns(delta)
 	_update_events(delta)
+	_update_music()
 
 	for b in batteries.duplicate():
 		if b.global_position.distance_to(player.global_position) < 26.0:
@@ -229,6 +231,7 @@ func _update_punching(delta: float) -> void:
 				punches += 1
 				score += 50
 				message("Punched in: %s" % cp.cp_name, 2.0)
+				Music.stinger("punch", -4.0)
 		else:
 			cp.progress = maxf(0.0, cp.progress - delta * 2.0)
 
@@ -330,10 +333,25 @@ func _update_events(delta: float) -> void:
 				live_lamps.pick_random().flicker(randf_range(1.0, 3.0))
 
 
+## Danger (0..1) drives the string layer: the Shadow closing in, a thief
+## nearby, or a dying flashlight.
+func _update_music() -> void:
+	var pp := player.global_position
+	var danger := 0.0
+	for s in shadows:
+		danger = maxf(danger, 1.0 - s.global_position.distance_to(pp) / 300.0)
+	for it in intruders:
+		danger = maxf(danger, (1.0 - it.global_position.distance_to(pp) / 350.0) * 0.7)
+	if player.battery < 15.0:
+		danger = maxf(danger, 0.5)
+	Music.set_mood(player.fear / 100.0, danger)
+
+
 func on_intruder_scared(_intruder, dropped_loot: bool) -> void:
 	scared += 1
 	score += 150 if dropped_loot else 100
 	message("Thief scared off - they dropped the loot!" if dropped_loot else "Thief scared off!", 2.5)
+	Music.stinger("spotted", -3.0)
 
 
 func on_item_grabbed(intruder, _valuable) -> void:
@@ -345,6 +363,7 @@ func on_theft(_intruder, _valuable) -> void:
 	thefts += 1
 	score -= 200
 	message("Something was stolen! (%d/%d)" % [thefts, MAX_THEFTS], 3.0)
+	Music.stinger("theft")
 
 
 func on_shadow_caught(s) -> void:
@@ -354,6 +373,7 @@ func on_shadow_caught(s) -> void:
 	player.stun(1.0)
 	s.reset_to(_far_shadow_spawn())
 	message("IT TOUCHED YOU. You come to in the lobby.", 3.5)
+	Music.stinger("scare")
 
 
 func _end_of_shift() -> void:
@@ -369,6 +389,7 @@ func _end(win: bool, reason: String) -> void:
 		return
 	ended = true
 	player.set_physics_process(false)
+	Music.end_shift(win)
 	message(reason, 10.0)
 	var result := {
 		"win": win,

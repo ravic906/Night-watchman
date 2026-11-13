@@ -7,6 +7,7 @@ var _help: Label
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	Music.play_menu()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
@@ -40,6 +41,14 @@ func _ready() -> void:
 		b.pressed.connect(GameState.start_night.bind(n))
 		box.add_child(b)
 
+	var sound_btn := _button(_sound_label())
+	sound_btn.pressed.connect(func():
+		GameState.sound_enabled = not GameState.sound_enabled
+		Music.set_enabled(GameState.sound_enabled)
+		GameState.save_game()
+		sound_btn.text = _sound_label())
+	box.add_child(sound_btn)
+
 	var help_btn := _button("How to play")
 	help_btn.pressed.connect(func(): _help.visible = not _help.visible)
 	box.add_child(help_btn)
@@ -63,6 +72,10 @@ From Night 2 something else walks the halls. It cannot move while it is in your 
 Keyboard: WASD/arrows move, mouse aims, Shift runs, F/Space/right-click toggles the light, E punches.
 Touch: left side is a joystick, buttons on the right."""
 	box.add_child(_help)
+
+
+func _sound_label() -> String:
+	return "Sound: On" if GameState.sound_enabled else "Sound: Off"
 
 
 func _spacer(h: float) -> Control:

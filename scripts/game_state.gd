@@ -36,6 +36,7 @@ const NIGHTS := {
 var night := 1
 var unlocked := 1
 var best_scores := {}
+var sound_enabled := true
 var last_result := {}
 
 ## Run with `-- --autotest` for a short, self-playing shift (used for CI/smoke tests).
@@ -100,6 +101,7 @@ func save_game() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "unlocked", unlocked)
 	cfg.set_value("progress", "best_scores", best_scores)
+	cfg.set_value("settings", "sound", sound_enabled)
 	cfg.save(SAVE_PATH)
 
 
@@ -109,6 +111,7 @@ func load_game() -> void:
 		return
 	unlocked = clampi(int(cfg.get_value("progress", "unlocked", 1)), 1, MAX_NIGHT)
 	best_scores = cfg.get_value("progress", "best_scores", {})
+	sound_enabled = bool(cfg.get_value("settings", "sound", true))
 
 
 func _setup_input() -> void:
