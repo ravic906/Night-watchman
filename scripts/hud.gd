@@ -336,5 +336,7 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 		var p := centre + dir * minf(absf(scale_x), absf(scale_y))
 		var col: Color = t[2]
 		var side := dir.orthogonal()
-		draw_colored_polygon(PackedVector2Array([p + dir * 14, p - dir * 6 + side * 9, p - dir * 6 - side * 9]), col)
+		# A slim arrow with a tail, so its direction is unmistakable.
+		draw_line(p - dir * 16, p + dir * 2, col, 3.0)
+		draw_colored_polygon(PackedVector2Array([p + dir * 14, p - side * 7, p + side * 7]), col)
 		draw_string(font, p - dir * 22 - Vector2(40, -5), t[1], HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color(col, 0.9))

@@ -12,6 +12,8 @@ var _repath := 0.0
 var _t := 0.0
 var _wake := 6.0
 var _brush_cooldown := 0.0
+var _unlit_time := 1.0
+var _last_floor := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -20,6 +22,7 @@ func _ready() -> void:
 
 func reset_to(pos: Vector2) -> void:
 	global_position = pos
+	_last_floor = pos
 	_path = PackedVector2Array()
 	_wake = 6.0
 
@@ -34,10 +37,13 @@ func _physics_process(delta: float) -> void:
 		# Frozen by the beam - but never left blocking a one-tile doorway.
 		var cell: Vector2i = game.level.world_to_cell(global_position)
 		if game.level.is_doorway(cell):
-			var back: Vector2 = global_position - (player.global_position - global_position).normalized() * 48.0
-			if _path_i >= 2 and _path_i - 2 < _path.size():
-				back = _path[_path_i - 2]
-			if not game.level.is_wall(game.level.world_to_cell(back)):
+			# Back out straight along the doorway (never diagonally into a wall),
+			# to the side away from the watchman.
+			var lvl = game.level
+			var axis := Vector2(0, 1) if lvl.is_wall(cell + Vector2i.LEFT) else Vector2(1, 0)
+			var away := axis if (global_position - player.global_position).dot(axis) >= 0.0 else -axis
+			var back: Vector2 = lvl.cell_to_world(cell) + away * 48.0
+			if not lvl.is_wall(lvl.world_to_cell(back)):
 				global_position = global_position.move_toward(back, speed * 1.5 * delta)
 		# Brushing past a frozen Shadow is still terrifying.
 		_brush_cooldown = maxf(0.0, _brush_cooldown - delta)
@@ -45,7 +51,8 @@ func _physics_process(delta: float) -> void:
 			_brush_cooldown = 3.0
 			game.player.fear = minf(100.0, game.player.fear + 10.0)
 			game.message("You brush against something cold...", 2.0)
-	elif not lit:
+	else:
+		_unlit_time += delta
 		_repath -= delta
 		if _repath <= 0.0:
 			_repath = 0.5
@@ -59,8 +66,20 @@ func _physics_process(delta: float) -> void:
 				_path_i += 1
 			else:
 				global_position += to.normalized() * step
-		if global_position.distance_to(player.global_position) < 26.0:
+		# A short grace after leaving the beam, so stepping past a frozen
+		# Shadow is a scare, not a catch.
+		if global_position.distance_to(player.global_position) < 26.0 and _unlit_time > 0.4:
 			game.on_shadow_caught(self)
+
+	if lit:
+		_unlit_time = 0.0
+	# Safety net: never stay inside a wall.
+	var here: Vector2i = game.level.world_to_cell(global_position)
+	if game.level.is_wall(here):
+		global_position = _last_floor
+		_path = PackedVector2Array()
+	else:
+		_last_floor = game.level.cell_to_world(here)
 
 	glow.position = global_position
 	glow.queue_redraw()

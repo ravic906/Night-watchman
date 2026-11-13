@@ -324,7 +324,7 @@ func _physics_process(delta: float) -> void:
 		_last_player_pos = player.global_position
 
 	for b in batteries.duplicate():
-		if b.global_position.distance_to(player.global_position) < 26.0:
+		if b.global_position.distance_to(player.global_position) < 26.0 and player.battery < 95.0:
 			player.battery = minf(100.0, player.battery + BatteryPickup.AMOUNT)
 			batteries.erase(b)
 			b.remove()
@@ -757,6 +757,11 @@ func _send_crew() -> void:
 			taken.append(it.door)
 
 
+## Spread batteries out: no two within about one room of each other.
+func _battery_near(pos: Vector2) -> bool:
+	return batteries.any(func(b): return b.global_position.distance_to(pos) < 330.0)
+
+
 func _spawn_battery() -> void:
 	# Prefer a spot near a clock you'll be sent to, so batteries sit on your route.
 	var pos: Vector2 = level.random_floor_far_from(player.global_position, 350.0)
@@ -767,9 +772,16 @@ func _spawn_battery() -> void:
 			var p: Vector2 = c.global_position + Vector2(randf_range(-3, 3), randf_range(-3, 3)).round() * 48.0
 			var cell: Vector2i = level.world_to_cell(p)
 			if level.floor_cells.has(cell) and not level.is_cell_solid(p) and p.distance_to(player.global_position) > 150.0 \
-					and p.distance_to(c.global_position) > 40.0:
+					and p.distance_to(c.global_position) > 40.0 and not _battery_near(level.cell_to_world(cell)):
 				pos = level.cell_to_world(cell)
 				break
+	if _battery_near(pos):
+		for attempt in 10:
+			pos = level.random_floor_far_from(player.global_position, 350.0)
+			if not _battery_near(pos):
+				break
+		if _battery_near(pos):
+			return
 	var b = _spawn(BatteryPickup, pos)
 	batteries.append(b)
 
@@ -1098,8 +1110,9 @@ func _load_inputs() -> void:
 			continue
 		var parts := line.split(" ", false)
 		if parts.size() >= 2:
-			_inputs.append({"t": float(parts[0]), "cmd": parts[1], "args": parts.slice(2)})
-	_inputs.sort_custom(func(a, b): return a["t"] < b["t"])
+			_inputs.append({"t": float(parts[0]), "cmd": parts[1], "args": parts.slice(2), "line": _inputs.size()})
+	# Stable order: by time, then by line in the file.
+	_inputs.sort_custom(func(a, b): return a["t"] < b["t"] or (a["t"] == b["t"] and a["line"] < b["line"]))
 
 
 func _update_harness() -> void:
