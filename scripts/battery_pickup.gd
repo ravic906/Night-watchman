@@ -23,9 +23,11 @@ func _draw() -> void:
 
 
 func _draw_glow() -> void:
-	var a := 0.35 + 0.35 * sin(_t * 4.0)
-	glow.draw_circle(Vector2.ZERO, 5, Color(0.4, 1.0, 0.5, a))
-	glow.draw_arc(Vector2.ZERO, 12, 0, TAU, 16, Color(0.4, 1.0, 0.5, a * 0.5), 1.5)
+	var a := 0.55 + 0.4 * sin(_t * 4.0)
+	glow.draw_circle(Vector2.ZERO, 6, Color(0.45, 1.0, 0.55, a))
+	# An expanding pulse ring makes spare batteries easy to spot.
+	var pulse := fmod(_t * 0.8, 1.0)
+	glow.draw_arc(Vector2.ZERO, 10 + pulse * 22, 0, TAU, 24, Color(0.45, 1.0, 0.55, (1.0 - pulse) * 0.6), 2.0)
 
 
 func remove() -> void:

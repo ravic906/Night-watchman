@@ -33,6 +33,8 @@ var call_names: Array = []
 var machine_names: Array = []
 ## Breaker circuits: x < wing_bounds.x is West, x >= wing_bounds.y is East.
 var wing_bounds := Vector2i(12, 26)
+## Most clocks the radio orders per check here (busier maps cap Hard at 2).
+var max_rooms := 3
 ## Loot style drawn by valuable.gd: "art", "homes", "retail", "industrial".
 var loot := "art"
 var theme := {

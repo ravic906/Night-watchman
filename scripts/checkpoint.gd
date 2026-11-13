@@ -52,7 +52,8 @@ func complete(game) -> void:
 # --- thief sabotage ----------------------------------------------------------
 
 func can_sabotage() -> bool:
-	return not jammed and saboteur == null
+	# Only clocks still waiting on this check's orders are worth jamming.
+	return ordered and not done and not jammed and saboteur == null
 
 
 func sabotage_time() -> float:

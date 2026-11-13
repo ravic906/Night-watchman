@@ -56,6 +56,7 @@ func _draw() -> void:
 	_bar(Vector2(24, 82), "Fear", fear, Color(0.8, 0.15, 0.25))
 	_bar(Vector2(24, 106), "Stamina", p.stamina, Color(0.35, 0.7, 0.9))
 
+	_draw_pointers(font, size)
 	_draw_duties(font, size)
 
 	# Action prompt
@@ -131,17 +132,53 @@ func _draw_duties(font: Font, size: Vector2) -> void:
 			lines.append(["[ ] %s" % cp.cp_name, TODO_COL, 15])
 	var nxt: Array = game.next_orders()
 	if not nxt.is_empty():
-		lines.append(["NEXT: %s" % ", ".join(nxt.map(func(c): return c.cp_name)), Color(1.0, 0.75, 0.35, 0.8), 13])
+		var nxt_text := "NEXT: %s" % ", ".join(nxt.map(func(c): return c.cp_name))
+		if nxt_text.length() > 30:
+			nxt_text = nxt_text.substr(0, 28) + "..."
+		lines.append([nxt_text, Color(1.0, 0.75, 0.35, 0.8), 13])
 	lines.append(["Score %d   Stolen %d/%d" % [game.score, game.thefts, game.MAX_THEFTS],
 			Color(1, 0.45, 0.4) if game.thefts > 0 else Color(0.85, 0.85, 0.95), 15])
 
-	var w := 250.0
+	var w := 232.0
 	var x := size.x - w
 	var h := 20.0
 	for l in lines:
 		h += 22.0 if l[2] >= 15 else 20.0
-	draw_rect(Rect2(x - 12, 12, w, h), Color(0, 0, 0, 0.45))
-	var y := 34.0
+	# On touch screens the panel sits a little lower, clear of the corner.
+	var top := 12.0
+	draw_rect(Rect2(x - 12, top, w, h), Color(0, 0, 0, 0.45))
+	var y := top + 22.0
 	for l in lines:
 		draw_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, w - 16, l[2], l[1])
 		y += 22.0 if l[2] >= 15 else 20.0
+
+
+## Arrows at the screen edge pointing to things that need you but are off
+## screen: ordered clocks (amber), intercom calls (orange), machines (red).
+func _draw_pointers(font: Font, size: Vector2) -> void:
+	var xf := get_viewport().get_canvas_transform()
+	var targets: Array = []
+	for cp in game.orders_open():
+		if not cp.done:
+			targets.append([cp.global_position, cp.cp_name, Color(1.0, 0.8, 0.3)])
+	for c in game.calls_active():
+		targets.append([c.global_position, c.flat, Color(1.0, 0.55, 0.15)])
+	for m in game.machines_running():
+		targets.append([m.global_position, m.machine_name, Color(1.0, 0.3, 0.25)])
+	var centre := size / 2.0
+	var margin := 34.0
+	var bottom := 30.0 + (260.0 if GameState.use_touch_controls() else 0.0)  # keep clear of touch buttons
+	var bounds := Rect2(Vector2(margin, margin + 120.0), size - Vector2(margin * 2, margin + 120.0 + bottom))
+	for t in targets:
+		var screen: Vector2 = xf * (t[0] as Vector2)
+		if Rect2(Vector2.ZERO, size).grow(-10).has_point(screen):
+			continue
+		var dir := (screen - centre).normalized()
+		# Walk from the centre towards the target until we hit the margin box.
+		var scale_x := INF if is_zero_approx(dir.x) else ((bounds.end.x if dir.x > 0 else bounds.position.x) - centre.x) / dir.x
+		var scale_y := INF if is_zero_approx(dir.y) else ((bounds.end.y if dir.y > 0 else bounds.position.y) - centre.y) / dir.y
+		var p := centre + dir * minf(absf(scale_x), absf(scale_y))
+		var col: Color = t[2]
+		var side := dir.orthogonal()
+		draw_colored_polygon(PackedVector2Array([p + dir * 14, p - dir * 6 + side * 9, p - dir * 6 - side * 9]), col)
+		draw_string(font, p - dir * 22 - Vector2(40, -5), t[1], HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color(col, 0.9))

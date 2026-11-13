@@ -11,6 +11,7 @@ var _path_i := 0
 var _repath := 0.0
 var _t := 0.0
 var _wake := 6.0
+var _brush_cooldown := 0.0
 
 
 func _ready() -> void:
@@ -26,9 +27,24 @@ func reset_to(pos: Vector2) -> void:
 func _physics_process(delta: float) -> void:
 	_t += delta
 	var player: Node2D = game.player
-	lit = game.player.is_lit(global_position)
+	lit = game.player.is_lit(global_position, 12.0)
 	if _wake > 0.0:
 		_wake -= delta
+	elif lit:
+		# Frozen by the beam - but never left blocking a one-tile doorway.
+		var cell: Vector2i = game.level.world_to_cell(global_position)
+		if game.level.is_doorway(cell):
+			var back: Vector2 = global_position - (player.global_position - global_position).normalized() * 48.0
+			if _path_i >= 2 and _path_i - 2 < _path.size():
+				back = _path[_path_i - 2]
+			if not game.level.is_wall(game.level.world_to_cell(back)):
+				global_position = global_position.move_toward(back, speed * 1.5 * delta)
+		# Brushing past a frozen Shadow is still terrifying.
+		_brush_cooldown = maxf(0.0, _brush_cooldown - delta)
+		if global_position.distance_to(player.global_position) < 22.0 and _brush_cooldown <= 0.0:
+			_brush_cooldown = 3.0
+			game.player.fear = minf(100.0, game.player.fear + 10.0)
+			game.message("You brush against something cold...", 2.0)
 	elif not lit:
 		_repath -= delta
 		if _repath <= 0.0:

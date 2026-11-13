@@ -30,6 +30,7 @@ func _init() -> void:
 		"#.............#..........#.............#",
 		"######W############E############W#######",
 	]
+	max_rooms = 2
 	checkpoint_names = ["Flat 1A", "Flat 1B", "Flat 1C", "Flat 2A", "Flat 2B"]
 	room_labels = [
 		["FLAT 1A", Vector2i(1, 1)],

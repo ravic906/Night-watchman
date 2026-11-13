@@ -82,13 +82,16 @@ func _process(_delta: float) -> void:
 func _draw_glow() -> void:
 	var half := TILE / 2.0
 	if closed:
-		glow.draw_rect(Rect2(-half, -half + 4, TILE, TILE - 8), Color(0.32, 0.34, 0.38, 0.9))
+		glow.draw_rect(Rect2(-half, -half + 4, TILE, TILE - 8), Color(0.5, 0.53, 0.58, 0.95))
 		for i in 6:
 			var y := -half + 8 + i * 6.5
-			glow.draw_line(Vector2(-half, y), Vector2(half, y), Color(0.18, 0.19, 0.22), 1.5)
+			glow.draw_line(Vector2(-half, y), Vector2(half, y), Color(0.25, 0.27, 0.3), 1.5)
 	else:
-		# Rolled up into its drum.
+		# Rolled up into its drum, with a dashed red warning line across the gap.
 		glow.draw_rect(Rect2(-half, -half, TILE, 7), Color(0.3, 0.32, 0.36, 0.8))
+		for i in 6:
+			var x := -half + i * 8.0
+			glow.draw_line(Vector2(x, 0), Vector2(x + 4, 0), Color(1.0, 0.3, 0.2, 0.75), 2.0)
 	var c := Color(0.35, 1.0, 0.45, 0.85) if closed else Color(1.0, 0.3, 0.2, 0.85)
 	glow.draw_circle(Vector2(half - 6, -half + 3), 3.0, c)
 	if picker != null:

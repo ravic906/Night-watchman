@@ -25,7 +25,7 @@ const SHIFT_SECONDS := 360.0     # 10 PM -> 6 AM
 const START_HOUR := 22
 const HEARING_RANGE := 650.0
 const MAX_THEFTS := 3
-const MAX_BATTERIES := 2
+const MAX_BATTERIES := 3
 
 var cfg: Dictionary
 var level: Level
@@ -77,6 +77,10 @@ var scared := 0
 var score := 0
 var ended := false
 var flash := 0.0
+## Seconds during which fear cannot rise (after waking from a Shadow touch).
+var fear_grace := 0.0
+## Always-on lamp over the security desk (the start tile).
+var desk_light: PointLight2D
 var near_device = null
 var entered := 0
 var sabotages := 0
@@ -184,6 +188,14 @@ func _ready() -> void:
 	devices = checkpoints + [alarm, breaker] + doors + windows + shutters + call_spots + machines
 	_assign_shop_gates()
 
+	desk_light = PointLight2D.new()
+	desk_light.texture = preload("res://scripts/flashlight.gd").make_radial_texture(256)
+	desk_light.texture_scale = 130.0 / 128.0
+	desk_light.color = Color(0.85, 0.9, 1.0)
+	desk_light.energy = 0.8
+	desk_light.position = level.player_spawn
+	world.add_child(desk_light)
+
 	player = Player.new()
 	player.name = "Watchman"
 	player.position = level.player_spawn
@@ -227,6 +239,11 @@ func _spawn(script, pos: Vector2, add := true) -> Node2D:
 	if add:
 		world.add_child(node)
 	return node
+
+
+## Score never goes below zero.
+func add_score(n: int) -> void:
+	score = maxi(0, score + n)
 
 
 func message(text: String, seconds := 3.0) -> void:
@@ -360,7 +377,7 @@ func _update_rounds() -> void:
 		var missed: Array = checkpoints.filter(func(c): return c.ordered and not c.done)
 		if not missed.is_empty():
 			orders_missed += missed.size()
-			score -= 30 * missed.size()
+			add_score(-(30 * missed.size()))
 			message("Missed: %s" % ", ".join(missed.map(func(c): return c.cp_name)), 3.0)
 	var previous: Array = checkpoints.filter(func(c): return c.ordered)
 	patrol_hour = window_start
@@ -380,16 +397,16 @@ func _update_rounds() -> void:
 	Music.stinger("radio", -4.0)
 
 
+## Pick this check's rooms, avoiding last check's rooms whenever possible.
 func _pick_rooms(avoid: Array) -> Array:
-	var count: int = mini(int(cfg["rooms_per_check"]), checkpoints.size())
-	var picks: Array = []
-	for attempt in 6:
-		picks = checkpoints.duplicate()
-		picks.shuffle()
-		picks = picks.slice(0, count)
-		if not _same_set(picks, avoid):
-			break
-	return picks
+	var count: int = mini(mini(int(cfg["rooms_per_check"]), int(location.max_rooms)), checkpoints.size())
+	if GameState.overrides.has("rooms_per_check"):
+		count = mini(int(cfg["rooms_per_check"]), checkpoints.size())
+	var fresh: Array = checkpoints.filter(func(c): return not c in avoid)
+	var repeat: Array = checkpoints.filter(func(c): return c in avoid)
+	fresh.shuffle()
+	repeat.shuffle()
+	return (fresh + repeat).slice(0, count)
 
 
 func _names(list: Array) -> String:
@@ -608,6 +625,8 @@ func on_intruder_exit(_intruder, pos: Vector2) -> void:
 
 
 func in_safe_light(pos: Vector2) -> bool:
+	if desk_light != null and pos.distance_to(level.player_spawn) < 110.0:
+		return true
 	for lamp in lamps:
 		if lamp.covers(pos):
 			return true
@@ -615,6 +634,7 @@ func in_safe_light(pos: Vector2) -> bool:
 
 
 func _update_fear(delta: float) -> void:
+	fear_grace = maxf(0.0, fear_grace - delta)
 	var rate: float = cfg["fear_dark"]
 	if player.light_active() or in_safe_light(player.global_position):
 		rate = -6.0
@@ -624,6 +644,8 @@ func _update_fear(delta: float) -> void:
 			rate += (240.0 - d) / 240.0 * 9.0
 		if s.lit:
 			rate += 2.0
+	if fear_grace > 0.0:
+		rate = minf(rate, -6.0)
 	player.fear = clampf(player.fear + rate * delta, 0.0, 100.0)
 
 
@@ -648,7 +670,7 @@ func _update_spawns(delta: float) -> void:
 
 	_battery_timer -= delta
 	if _battery_timer <= 0.0:
-		_battery_timer = randf_range(18.0, 28.0)
+		_battery_timer = randf_range(14.0, 22.0)
 		if batteries.size() < MAX_BATTERIES:
 			_spawn_battery()
 
@@ -724,7 +746,18 @@ func _send_crew() -> void:
 
 
 func _spawn_battery() -> void:
+	# Prefer a spot near a clock you'll be sent to, so batteries sit on your route.
 	var pos: Vector2 = level.random_floor_far_from(player.global_position, 350.0)
+	var route: Array = orders_open().filter(func(c): return not c.done) + _next_picks
+	if not route.is_empty() and randf() < 0.7:
+		var c = route.pick_random()
+		for attempt in 12:
+			var p: Vector2 = c.global_position + Vector2(randf_range(-3, 3), randf_range(-3, 3)).round() * 48.0
+			var cell: Vector2i = level.world_to_cell(p)
+			if level.floor_cells.has(cell) and not level.is_cell_solid(p) and p.distance_to(player.global_position) > 150.0 \
+					and p.distance_to(c.global_position) > 40.0:
+				pos = level.cell_to_world(cell)
+				break
 	var b = _spawn(BatteryPickup, pos)
 	batteries.append(b)
 
@@ -806,18 +839,22 @@ func on_theft(_intruder, valuable) -> void:
 	if GameState.autotest_survive:
 		valuable.stolen = false  # keep the building worth robbing in survive tests
 		valuable.refresh()
-	score -= 200
+	add_score(-(200))
 	message("Something was stolen! (%d/%d)" % [thefts, MAX_THEFTS], 3.0)
 	Music.stinger("theft")
 
 
 func on_shadow_caught(s) -> void:
-	player.fear = minf(100.0, player.fear + 40.0)
+	player.fear = minf(100.0, player.fear + 30.0)
 	flash = 1.0
+	# Wake at the lit security desk with the light on and a moment to recover.
 	player.global_position = level.player_spawn
 	player.stun(1.0)
+	player.flashlight_on = true
+	player.battery = maxf(player.battery, 25.0)
+	fear_grace = 5.0
 	s.reset_to(_far_shadow_spawn())
-	message("IT TOUCHED YOU. You come to in the lobby.", 3.5)
+	message("IT TOUCHED YOU. You come to at the security desk.", 3.5)
 	Music.stinger("scare")
 
 
@@ -876,7 +913,7 @@ func _update_calls(delta: float) -> void:
 		if c.active and c.time_left <= 0.0:
 			c.active = false
 			complaints += 1
-			score -= 50
+			add_score(-(50))
 			message("%s gave up waiting and complained. (%d/%d)" % [c.flat, complaints, MAX_COMPLAINTS], 3.5)
 	_call_timer -= delta
 	if _call_timer > 0.0:
@@ -1002,7 +1039,11 @@ func _end(win: bool, reason: String) -> void:
 func _autopilot() -> void:
 	var target = null
 	var best := INF
-	for dev in devices:
+	# Like a sensible player: when the hour is running out, clocks come first.
+	var time_left := check_window_seconds() - (elapsed - float(_window.get("start", elapsed)))
+	var urgent: Array = orders_open().filter(func(c): return not c.done)
+	var pool: Array = urgent if (time_left < 22.0 and not urgent.is_empty()) else devices
+	for dev in pool:
 		if dev.needs_action():
 			var d: float = dev.global_position.distance_to(player.global_position)
 			if d < best:
@@ -1113,6 +1154,7 @@ func _snapshot(t: float) -> void:
 				"machines": machines.map(func(m): return {"name": m.machine_name, "running": m.running, "overheated": m.overheated, "cell": _cell_of(m)})},
 		"intruders": intruders.map(func(it): return {"cell": _cell_of(it), "state": Intruder.State.keys()[it.state], "inside": it.inside, "lit": it.lit}),
 		"shadows": shadows.map(func(sh): return {"cell": _cell_of(sh), "lit": sh.lit}),
+		"batteries": batteries.map(func(b): return _cell_of(b)),
 		"messages": _messages.map(func(m): return m["text"]),
 	}
 	var dir := GameState.out_dir if GameState.out_dir != "" else "user://harness"

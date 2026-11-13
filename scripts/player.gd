@@ -87,7 +87,13 @@ func light_active() -> bool:
 
 
 ## True when `pos` is inside the flashlight cone with nothing blocking it.
-func is_lit(pos: Vector2) -> bool:
+func is_lit(pos: Vector2, radius := 0.0) -> bool:
+	if radius > 0.0:
+		# A body, not a point: lit if its centre or any edge point is in the beam.
+		for off in [Vector2.ZERO, Vector2(radius, 0), Vector2(-radius, 0), Vector2(0, radius), Vector2(0, -radius)]:
+			if is_lit(pos + off):
+				return true
+		return false
 	if not light_active():
 		return false
 	var to := pos - global_position

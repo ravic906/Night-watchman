@@ -30,6 +30,7 @@ func _init() -> void:
 		"#............#...........#.............#",
 		"######W#################################",
 	]
+	max_rooms = 2
 	checkpoint_names = ["Press Line", "Assembly", "Office", "Warehouse", "Boiler Room"]
 	room_labels = [
 		["MACHINE HALL", Vector2i(5, 1)],
