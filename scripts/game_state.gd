@@ -176,7 +176,12 @@ func finish_night(result: Dictionary) -> void:
 		var key := "%s:%d" % [location, difficulty]
 		best_scores[key] = maxi(int(best_scores.get(key, 0)), int(result.get("score", 0)))
 	save_game()
-	get_tree().change_scene_to_file(END_SCENE)
+	if harness_active():
+		# Scripted runs end here: print the result and exit cleanly.
+		print("HARNESS shift over: ", result)
+		get_tree().quit()
+		return
+	get_tree().call_deferred("change_scene_to_file", END_SCENE)
 
 
 func go_to_menu() -> void:
