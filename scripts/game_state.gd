@@ -16,6 +16,7 @@ const NIGHTS := {
 		"intruder_speed": 70.0, "expose_time": 1.3,
 		"battery_drain": 1.1, "fear_dark": 1.6,
 		"shadows": 0, "shadow_speed": 0.0, "event_mult": 1.0,
+		"sabotage_chance": 0.35, "lockpick_time": 8.0,
 	},
 	2: {
 		"title": "Night 2 - Something Else Is Here",
@@ -23,6 +24,7 @@ const NIGHTS := {
 		"intruder_speed": 82.0, "expose_time": 1.5,
 		"battery_drain": 1.4, "fear_dark": 2.2,
 		"shadows": 1, "shadow_speed": 55.0, "event_mult": 1.3,
+		"sabotage_chance": 0.5, "lockpick_time": 6.5,
 	},
 	3: {
 		"title": "Night 3 - The Long Dark",
@@ -30,6 +32,7 @@ const NIGHTS := {
 		"intruder_speed": 95.0, "expose_time": 1.7,
 		"battery_drain": 1.7, "fear_dark": 2.8,
 		"shadows": 2, "shadow_speed": 70.0, "event_mult": 1.6,
+		"sabotage_chance": 0.6, "lockpick_time": 5.0,
 	},
 }
 
@@ -43,6 +46,8 @@ var last_result := {}
 var autotest := false
 ## Run with `-- --touch` to show the on-screen controls on desktop.
 var force_touch := false
+## Dev helper: `-- --start-cell=X,Y` starts the watchman at that map cell.
+var start_cell := Vector2i(-1, -1)
 
 
 func _ready() -> void:
@@ -52,6 +57,10 @@ func _ready() -> void:
 	for a in args:
 		if a.begins_with("--night="):
 			night = clampi(int(a.trim_prefix("--night=")), 1, MAX_NIGHT)
+		elif a.begins_with("--start-cell="):
+			var xy := a.trim_prefix("--start-cell=").split(",")
+			if xy.size() == 2:
+				start_cell = Vector2i(int(xy[0]), int(xy[1]))
 		elif a.begins_with("--screenshot="):
 			_take_screenshot_later(a.trim_prefix("--screenshot="))
 	_setup_input()

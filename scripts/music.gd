@@ -6,7 +6,8 @@ extends Node
 const LOOP_NAMES := ["drone", "heartbeat", "tension", "musicbox"]
 const STINGER_NAMES := ["scare", "theft", "spotted", "dawn", "fail", "punch",
 		"door_creak", "door_swing", "door_slam",
-		"step_1", "step_2", "step_3", "step_4", "sneak_1", "sneak_2", "sneak_3"]
+		"step_1", "step_2", "step_3", "step_4", "sneak_1", "sneak_2", "sneak_3",
+		"alarm_arm", "alarm_chime", "alarm_cut", "breaker", "lockpick", "lock"]
 ## Names that pick a random take, so repeated sounds do not feel mechanical.
 const VARIANTS := {"step": 4, "sneak": 3}
 const FADE_SPEED := 1.5

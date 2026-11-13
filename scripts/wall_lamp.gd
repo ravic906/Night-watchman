@@ -8,6 +8,9 @@ var glow: Node2D
 var light: PointLight2D
 var on := true
 var dead := false
+## False while the breaker for this lamp's wing is off.
+var powered := true
+var wing := ""
 var _flicker_left := 0.0
 var _flick := 0.0
 
@@ -36,8 +39,17 @@ func kill() -> void:
 	glow.queue_redraw()
 
 
+func set_powered(value: bool) -> void:
+	powered = value
+	glow.queue_redraw()
+
+
+func lit() -> bool:
+	return on and powered
+
+
 func covers(pos: Vector2) -> bool:
-	if not on or pos.distance_to(global_position) > RADIUS * 0.75:
+	if not lit() or pos.distance_to(global_position) > RADIUS * 0.75:
 		return false
 	var query := PhysicsRayQueryParameters2D.create(global_position, pos, 1)
 	return get_world_2d().direct_space_state.intersect_ray(query).is_empty()
@@ -54,12 +66,12 @@ func _physics_process(delta: float) -> void:
 			on = randf() > 0.5
 		if _flicker_left <= 0.0:
 			on = true
-	light.enabled = on
+	light.enabled = lit()
 	glow.queue_redraw()
 
 
 func _draw_glow() -> void:
-	var col := Color(1.0, 0.9, 0.6, 0.9) if on else Color(0.35, 0.33, 0.3, 0.8)
+	var col := Color(1.0, 0.9, 0.6, 0.9) if lit() else Color(0.35, 0.33, 0.3, 0.8)
 	glow.draw_circle(Vector2.ZERO, 5, col)
-	if on:
+	if lit():
 		glow.draw_circle(Vector2.ZERO, 10, Color(1.0, 0.9, 0.6, 0.15))

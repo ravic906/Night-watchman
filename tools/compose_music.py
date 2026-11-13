@@ -377,6 +377,80 @@ def make_door_slam():
     return normalize(lin_reverb(stereo(out), 0.4, 1.4), 0.9)
 
 
+def beep(f, seconds, square=0.3):
+    t = env_t(seconds)
+    tone = np.sin(2 * np.pi * f * t) + square * np.sin(2 * np.pi * 3 * f * t) / 3
+    return tone * np.minimum(1, t / 0.005) * np.minimum(1, (seconds - t) / 0.01)
+
+
+def make_alarm_arm():
+    """Keypad confirm: three rising beeps."""
+    buf = np.zeros((int(SR * 0.9), 2))
+    for i, f in enumerate([880, 1175, 1568]):
+        place(buf, stereo(beep(f, 0.11) * 0.6), i * 0.14, wrap=False)
+    return normalize(lin_reverb(buf, 0.15, 0.4), 0.7)
+
+
+def make_alarm_chime():
+    """Break-in chime: two-tone ding-dong, twice."""
+    buf = np.zeros((int(SR * 2.2), 2))
+    for rep in range(2):
+        for i, n in enumerate(["E6", "C6"]):
+            b = bell(note(n), 1.0)
+            b[: int(SR * 0.25)] += beep(note(n), 0.25, 0.6) * np.exp(-env_t(0.25) / 0.1) * 0.3
+            place(buf, stereo(b), rep * 0.7 + i * 0.3, wrap=False)
+    return normalize(lin_reverb(buf, 0.3, 1.2), 0.8)
+
+
+def make_alarm_cut():
+    """Panel dying: falling squeal into an electrical fizz."""
+    t = env_t(1.3)
+    f = 1500 * np.exp(-t * 2.2) + 120
+    squeal = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t / 0.6)
+    r = np.random.default_rng(21)
+    fizz = lin_filter(r.standard_normal(t.size), lo=2500) * (r.random(t.size) < 0.08)
+    fizz *= np.exp(-np.maximum(0, t - 0.3) / 0.25) * (t > 0.3)
+    return normalize(lin_reverb(stereo(squeal * 0.7 + fizz * 0.8), 0.25, 0.8), 0.8)
+
+
+def make_breaker():
+    """Heavy breaker clunk with a dying mains hum."""
+    t = env_t(1.6)
+    out = np.zeros_like(t)
+    th = thump(110, 50, 0.4, click=0.8)
+    out[: th.size] += th
+    hum = sum(np.sin(2 * np.pi * 50 * h * t) / h for h in (1, 2, 3, 5))
+    out += hum * 0.25 * np.exp(-t / 0.35) * np.minimum(1, t / 0.02)
+    cl = click(0.04, 1500) * 0.6
+    out[: cl.size] += cl
+    return normalize(lin_reverb(stereo(lin_filter(out, hi=6000)), 0.35, 1.2), 0.85)
+
+
+def make_lockpick():
+    """A few metallic ticks of a pick working a lock."""
+    r = np.random.default_rng(31)
+    buf = np.zeros((int(SR * 0.8), 2))
+    tick_t = env_t(0.03)
+    for i in range(5):
+        f = r.uniform(3800, 5200)
+        tick = np.sin(2 * np.pi * f * tick_t) * np.exp(-tick_t / 0.006)
+        tick += r.standard_normal(tick_t.size) * np.exp(-tick_t / 0.002) * 0.3
+        place(buf, stereo(tick * r.uniform(0.5, 1.0)), 0.05 + i * r.uniform(0.07, 0.13), wrap=False)
+    return normalize(lin_reverb(buf, 0.2, 0.4), 0.7)
+
+
+def make_lock():
+    """Deadbolt sliding home."""
+    t = env_t(0.4)
+    r = np.random.default_rng(41)
+    slide = lin_filter(r.standard_normal(t.size), lo=800, hi=4000) * (t < 0.12) * np.minimum(1, t / 0.02) * 0.3
+    out = slide
+    th = thump(240, 120, 0.1, click=0.6) * 0.6
+    at = int(SR * 0.12)
+    out[at: at + th.size] += th[: out.size - at]
+    return normalize(lin_reverb(stereo(out), 0.2, 0.5), 0.75)
+
+
 # ---------------------------------------------------------------- output
 
 def write_ogg(path, x, quality=4):
@@ -445,6 +519,12 @@ def main():
         "door_creak": make_door_creak(),
         "door_swing": make_door_swing(),
         "door_slam": make_door_slam(),
+        "alarm_arm": make_alarm_arm(),
+        "alarm_chime": make_alarm_chime(),
+        "alarm_cut": make_alarm_cut(),
+        "breaker": make_breaker(),
+        "lockpick": make_lockpick(),
+        "lock": make_lock(),
     }
     for i in range(4):
         stingers[f"step_{i + 1}"] = make_step(100 + i)

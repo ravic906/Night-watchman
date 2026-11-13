@@ -5,6 +5,19 @@ Your shift runs from 10 PM to 6 AM, and the building is not as empty as it shoul
 
 Everything is drawn in code, so there are no image files. The music is composed in code too.
 
+## Duties and sabotage
+Besides punching the clocks, the watchman has three more duties, and the thieves try to undo all of them:
+
+| Duty | Where | What you do | What thieves do | While it's broken |
+|---|---|---|---|---|
+| Alarm | Panel in the lobby | Arm it (re-wire it if cut) | Cut the wires | Intruder count shows **??**, no break-in chimes |
+| Power | Breaker box in the basement | Reset the breaker | Flip one wing's circuit | That wing's lamps are dark |
+| Doors | The two outside doors | Lock them | Pick the lock; anyone leaving leaves it unlocked | Thieves walk straight in, and more often |
+| Clocks | 5 punch clocks | Punch them | Jam them | Takes 3 s to fix and punch |
+
+While the **alarm is armed**, the top-right panel shows exactly how many intruders are inside, and a chime plays at every break-in. Lose the alarm and you're guessing again.
+Sabotage takes a thief a few seconds at the device, and you'll hear the work. Catch them in your beam to scare them off for a bonus.
+
 ## Music
 The score adapts to what is happening:
 - a low drone and wind are always there; a music-box melody plays while things are calm
@@ -28,7 +41,7 @@ The score adapts to what is happening:
 | Aim        | Mouse (or direction you walk) | Direction you walk     |
 | Run        | Shift                       | RUN                      |
 | Flashlight | F / Space / right click     | LIGHT                    |
-| Punch clock| Hold E                      | Hold PUNCH               |
+| Use (punch, lock, arm, reset) | Hold E          | Hold USE                 |
 
 There are three nights. Each one adds more thieves, a faster battery drain and more of the dark. Progress is saved.
 
@@ -42,6 +55,7 @@ Developer flags (put them after `--` on the command line):
 - `--autotest [--night=N]` runs a short, self-playing shift and quits. Use it as a smoke test:
   `godot --headless --path . res://scenes/game.tscn -- --autotest --night=2`
 - `--screenshot=/path/shot.png` saves a frame after 3 seconds and quits.
+- `--start-cell=X,Y` starts the watchman at that map cell.
 
 ## Exporting to mobile
 The project already uses the mobile-friendly **Compatibility** renderer, a landscape orientation, a stretch mode that fits any screen, and touch controls that appear on touchscreen devices.
@@ -71,7 +85,8 @@ scripts/
   level.gd             ASCII map -> walls, light occluders, A* grid, drawing
   player.gd            watchman movement, flashlight cone and battery
   flashlight.gd        light textures generated in code
-  intruder.gd          thief AI (sneak -> steal -> escape / flee)
+  intruder.gd          thief AI (pick lock -> sabotage? -> sneak -> steal -> escape / flee)
+  alarm_panel.gd, breaker_box.gd, outside_door.gd   sabotageable duties
   shadow.gd            the Shadow (moves only when not lit)
   checkpoint.gd, valuable.gd, battery_pickup.gd, wall_lamp.gd
   hud.gd, touch_controls.gd, menu.gd, end_screen.gd

@@ -9,7 +9,7 @@ var _joy_index := -1
 var _joy_center := Vector2.ZERO
 var _joy_vec := Vector2.ZERO
 var _buttons := [
-	{"action": "interact", "label": "PUNCH", "offset": Vector2(-110, -120), "r": 58.0, "index": -1},
+	{"action": "interact", "label": "USE", "offset": Vector2(-110, -120), "r": 58.0, "index": -1},
 	{"action": "flashlight", "label": "LIGHT", "offset": Vector2(-250, -80), "r": 46.0, "index": -1},
 	{"action": "run", "label": "RUN", "offset": Vector2(-120, -260), "r": 42.0, "index": -1},
 ]

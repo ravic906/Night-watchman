@@ -8,6 +8,7 @@ extends Node2D
 ##   V  valuable          L  wall lamp
 ##   E  outside door (intruders come and go here)
 ##   S  shadow spawn
+##   A  alarm panel       B  breaker box
 
 const TILE := 48
 
@@ -19,13 +20,13 @@ const MAP := [
 	"#.....1....#....2....#.........3.......#",
 	"#..L.......#.........#.......L.........#",
 	"#####.######...L.....######.############",
-	"#......................................#",
+	"#....................A.................#",
 	"#.........L.........................L..#",
 	"E..................P...................E",
 	"#......................................#",
 	"#......................................#",
 	"#######.#########.####.######.##########",
-	"#...........#.............#............#",
+	"#........B..#.............#............#",
 	"#...V.......#....V....V...#.....V......#",
 	"#.......4...#.............#............#",
 	"#...........#......L......#.......5....#",
@@ -56,6 +57,8 @@ var checkpoints: Array = []   # [{ "name": String, "pos": Vector2 }]
 var valuables: Array[Vector2] = []
 var lamps: Array[Vector2] = []
 var entries: Array[Vector2] = []
+var alarm_pos := Vector2.ZERO
+var breaker_pos := Vector2.ZERO
 var shadow_spawns: Array[Vector2] = []
 var floor_cells: Array[Vector2i] = []
 var astar := AStarGrid2D.new()
@@ -100,6 +103,10 @@ func build() -> void:
 					lamps.append(pos)
 				"S":
 					shadow_spawns.append(pos)
+				"A":
+					alarm_pos = pos
+				"B":
+					breaker_pos = pos
 				"1", "2", "3", "4", "5":
 					cp_slots[int(ch) - 1] = pos
 			if ch != "#":
@@ -198,6 +205,16 @@ func cell_to_world(cell: Vector2i) -> Vector2:
 
 func world_to_cell(pos: Vector2) -> Vector2i:
 	return Vector2i(clampi(int(pos.x / TILE), 0, width - 1), clampi(int(pos.y / TILE), 0, height - 1))
+
+
+## Which breaker circuit a position belongs to.
+func wing_of(pos: Vector2) -> String:
+	var x := world_to_cell(pos).x
+	if x < 12:
+		return "West"
+	if x >= 26:
+		return "East"
+	return "Centre"
 
 
 func is_doorway(cell: Vector2i) -> bool:

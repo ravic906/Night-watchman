@@ -55,25 +55,12 @@ func _draw() -> void:
 	_bar(Vector2(24, 82), "Fear", fear, Color(0.8, 0.15, 0.25))
 	_bar(Vector2(24, 106), "Stamina", p.stamina, Color(0.35, 0.7, 0.9))
 
-	# Top-right: patrol checklist
-	var x := size.x - 232
-	draw_rect(Rect2(x - 12, 12, 232, 50 + game.checkpoints.size() * 22 + 48), Color(0, 0, 0, 0.45))
-	draw_string(font, Vector2(x, 36), "Round %d/2" % game.patrol_round, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.95, 0.9, 0.6))
-	var y := 62.0
-	for cp in game.checkpoints:
-		var done: bool = cp.done
-		var mark := "[x] " if done else "[ ] "
-		draw_string(font, Vector2(x, y), mark + cp.cp_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16,
-				Color(0.5, 0.95, 0.55) if done else Color(0.85, 0.85, 0.85))
-		y += 22.0
-	draw_string(font, Vector2(x, y + 6), "Score  %d" % game.score, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.85, 0.85, 0.95))
-	draw_string(font, Vector2(x, y + 28), "Stolen %d/%d" % [game.thefts, game.MAX_THEFTS], HORIZONTAL_ALIGNMENT_LEFT, -1, 16,
-			Color(1, 0.45, 0.4) if game.thefts > 0 else Color(0.85, 0.85, 0.95))
+	_draw_duties(font, size)
 
-	# Punch prompt
-	if game.near_checkpoint != null:
-		var key := "PUNCH" if GameState.use_touch_controls() else "E"
-		var txt := "Hold %s to punch the %s clock" % [key, game.near_checkpoint.cp_name]
+	# Action prompt
+	if game.near_device != null:
+		var key := "USE" if GameState.use_touch_controls() else "E"
+		var txt := "Hold %s to %s" % [key, game.near_device.action_label()]
 		draw_string(font, Vector2(0, size.y * 0.68), txt, HORIZONTAL_ALIGNMENT_CENTER, size.x, 20, Color(1, 0.95, 0.7))
 
 	# Messages
@@ -82,3 +69,58 @@ func _draw() -> void:
 		var alpha := clampf(float(m["time"]), 0.0, 1.0)
 		draw_string(font, Vector2(0, my), m["text"], HORIZONTAL_ALIGNMENT_CENTER, size.x, 20, Color(0.92, 0.92, 0.95, alpha))
 		my += 26.0
+
+
+const OK_COL := Color(0.5, 0.95, 0.55)
+const TODO_COL := Color(0.85, 0.85, 0.85)
+const BAD_COL := Color(1.0, 0.55, 0.25)
+const DIM_COL := Color(0.65, 0.68, 0.8)
+
+
+## Top-right panel: intruder count (only while the alarm is armed), duties,
+## patrol clocks, score.
+func _draw_duties(font: Font, size: Vector2) -> void:
+	var lines: Array = []   # [text, color, font_size]
+	if game.alarm_armed():
+		var n: int = game.intruders_inside()
+		lines.append(["Intruders inside: %d" % n, Color(1, 0.4, 0.35) if n > 0 else OK_COL, 18])
+	else:
+		lines.append(["Intruders inside: ??", DIM_COL, 18])
+	lines.append(["DUTIES", DIM_COL, 13])
+	var a = game.alarm
+	if a.armed:
+		lines.append(["[x] Alarm armed", OK_COL, 15])
+	elif a.cut:
+		lines.append(["[!] Alarm CUT - re-wire it", BAD_COL, 15])
+	else:
+		lines.append(["[ ] Arm the alarm (lobby)", TODO_COL, 15])
+	var locked: int = game.doors_locked()
+	var total: int = game.doors.size()
+	lines.append(["%s Doors locked %d/%d" % ["[x]" if locked == total else "[ ]", locked, total],
+			OK_COL if locked == total else TODO_COL, 15])
+	var dead: Array = game.breaker.dead_wings()
+	if dead.is_empty():
+		lines.append(["[x] Power OK", OK_COL, 15])
+	else:
+		lines.append(["[!] Power out: %s" % ", ".join(dead), BAD_COL, 15])
+	lines.append(["CLOCKS - ROUND %d/2" % game.patrol_round, DIM_COL, 13])
+	for cp in game.checkpoints:
+		if cp.jammed:
+			lines.append(["[!] %s (jammed)" % cp.cp_name, BAD_COL, 15])
+		elif cp.done:
+			lines.append(["[x] %s" % cp.cp_name, OK_COL, 15])
+		else:
+			lines.append(["[ ] %s" % cp.cp_name, TODO_COL, 15])
+	lines.append(["Score %d   Stolen %d/%d" % [game.score, game.thefts, game.MAX_THEFTS],
+			Color(1, 0.45, 0.4) if game.thefts > 0 else Color(0.85, 0.85, 0.95), 15])
+
+	var w := 250.0
+	var x := size.x - w
+	var h := 20.0
+	for l in lines:
+		h += 22.0 if l[2] >= 15 else 20.0
+	draw_rect(Rect2(x - 12, 12, w, h), Color(0, 0, 0, 0.45))
+	var y := 34.0
+	for l in lines:
+		draw_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, w - 16, l[2], l[1])
+		y += 22.0 if l[2] >= 15 else 20.0
