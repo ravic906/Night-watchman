@@ -7,6 +7,8 @@ var cp_name := ""
 var done := false
 ## On this hour's patrol orders?
 var ordered := false
+## On the next check's orders (shown dimly so you can plan a route).
+var next_ordered := false
 var jammed := false
 var progress := 0.0
 var interact_range := 56.0
@@ -88,6 +90,8 @@ func _draw_glow() -> void:
 		col = Color(1.0, 0.65, 0.1, 0.5 + 0.5 * float(fmod(_t * 5.0, 1.0) > 0.5))
 	elif done:
 		col = Color(0.3, 1.0, 0.4, 0.9)
+	elif not ordered and next_ordered:
+		col = Color(1.0, 0.7, 0.2, 0.45)
 	elif not ordered:
 		col = Color(0.45, 0.45, 0.5, 0.45)
 	else:

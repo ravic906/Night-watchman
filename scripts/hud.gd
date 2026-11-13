@@ -121,7 +121,7 @@ func _draw_duties(font: Font, size: Vector2) -> void:
 	else:
 		lines.append(["[!] Power out: %s" % ", ".join(dead), BAD_COL, 15])
 	var hr: int = maxi(game.patrol_hour, 0)
-	lines.append(["PATROL %s - DUE BY %s" % [game.hour_label(hr), game.hour_label(hr + 1)], DIM_COL, 13])
+	lines.append(["PATROL %s - DUE BY %s" % [game.hour_label(hr), game.hour_label(hr + game.radio_hours())], DIM_COL, 13])
 	for cp in game.orders_open():
 		if cp.jammed and not cp.done:
 			lines.append(["[!] %s (jammed)" % cp.cp_name, BAD_COL, 15])
@@ -129,6 +129,9 @@ func _draw_duties(font: Font, size: Vector2) -> void:
 			lines.append(["[x] %s" % cp.cp_name, OK_COL, 15])
 		else:
 			lines.append(["[ ] %s" % cp.cp_name, TODO_COL, 15])
+	var nxt: Array = game.next_orders()
+	if not nxt.is_empty():
+		lines.append(["NEXT: %s" % ", ".join(nxt.map(func(c): return c.cp_name)), Color(1.0, 0.75, 0.35, 0.8), 13])
 	lines.append(["Score %d   Stolen %d/%d" % [game.score, game.thefts, game.MAX_THEFTS],
 			Color(1, 0.45, 0.4) if game.thefts > 0 else Color(0.85, 0.85, 0.95), 15])
 

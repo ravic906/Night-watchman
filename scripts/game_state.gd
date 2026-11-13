@@ -19,7 +19,7 @@ const DIFFICULTY := {
 		"battery_drain": 1.1, "fear_dark": 1.6,
 		"shadows": 0, "shadow_speed": 0.0, "event_mult": 1.0,
 		"sabotage_chance": 0.35, "lockpick_time": 8.0,
-		"orders_per_hour": 2, "late_interval_mult": 0.55, "crew_size": 2,
+		"radio_hours": 1, "rooms_per_check": 2, "late_interval_mult": 0.55, "crew_size": 2,
 		"window_break_time": 1.5, "pry_time": 6.0,
 	},
 	2: {
@@ -28,7 +28,7 @@ const DIFFICULTY := {
 		"battery_drain": 1.4, "fear_dark": 2.2,
 		"shadows": 1, "shadow_speed": 55.0, "event_mult": 1.3,
 		"sabotage_chance": 0.5, "lockpick_time": 6.5,
-		"orders_per_hour": 3, "late_interval_mult": 0.5, "crew_size": 3,
+		"radio_hours": 1, "rooms_per_check": 3, "late_interval_mult": 0.5, "crew_size": 3,
 		"window_break_time": 1.5, "pry_time": 6.0,
 	},
 	3: {
@@ -37,7 +37,7 @@ const DIFFICULTY := {
 		"battery_drain": 1.7, "fear_dark": 2.8,
 		"shadows": 2, "shadow_speed": 70.0, "event_mult": 1.6,
 		"sabotage_chance": 0.6, "lockpick_time": 5.0,
-		"orders_per_hour": 3, "late_interval_mult": 0.45, "crew_size": 3,
+		"radio_hours": 1, "rooms_per_check": 3, "late_interval_mult": 0.45, "crew_size": 3,
 		"window_break_time": 1.2, "pry_time": 5.0,
 	},
 }
@@ -57,6 +57,16 @@ var autotest_survive := false
 var force_touch := false
 ## Dev helper: `-- --start-cell=X,Y` starts the watchman at that map cell.
 var start_cell := Vector2i(-1, -1)
+## Dev/test overrides of difficulty settings (e.g. --radio-hours=2 --rooms=1).
+var overrides := {}
+## Play harness (see README "Automated playtesting").
+var seed_value := -1
+var inputs_path := ""
+var snap_times: Array = []
+var out_dir := ""
+var until_time := -1.0
+var fast := false
+var log_windows := false
 
 
 func _ready() -> void:
@@ -80,6 +90,26 @@ func _ready() -> void:
 			var xy := a.trim_prefix("--start-cell=").split(",")
 			if xy.size() == 2:
 				start_cell = Vector2i(int(xy[0]), int(xy[1]))
+		elif a.begins_with("--radio-hours="):
+			overrides["radio_hours"] = clampi(int(a.get_slice("=", 1)), 1, 4)
+		elif a.begins_with("--rooms="):
+			overrides["rooms_per_check"] = clampi(int(a.get_slice("=", 1)), 1, 5)
+		elif a.begins_with("--seed="):
+			seed_value = int(a.get_slice("=", 1))
+		elif a.begins_with("--inputs="):
+			inputs_path = a.get_slice("=", 1)
+		elif a.begins_with("--snap="):
+			for t in a.get_slice("=", 1).split(","):
+				snap_times.append(float(t))
+			snap_times.sort()
+		elif a.begins_with("--out="):
+			out_dir = a.get_slice("=", 1)
+		elif a.begins_with("--until="):
+			until_time = float(a.get_slice("=", 1))
+		elif a == "--fast":
+			fast = true
+		elif a == "--log-windows":
+			log_windows = true
 		elif a.begins_with("--screenshot="):
 			_take_screenshot_later(a.trim_prefix("--screenshot="))
 	_setup_input()
@@ -103,7 +133,13 @@ func _take_screenshot_later(path: String) -> void:
 
 
 func settings() -> Dictionary:
-	return DIFFICULTY[difficulty]
+	var s: Dictionary = DIFFICULTY[difficulty].duplicate()
+	s.merge(overrides, true)
+	return s
+
+
+func harness_active() -> bool:
+	return inputs_path != "" or not snap_times.is_empty() or until_time > 0.0
 
 
 func difficulty_name() -> String:

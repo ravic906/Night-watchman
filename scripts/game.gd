@@ -64,6 +64,9 @@ var shift_len := SHIFT_SECONDS
 var elapsed := 0.0
 ## Hourly patrol orders: which hour (0 = 10 PM) and how the night is going.
 var patrol_hour := -1
+var _next_picks: Array = []
+var _window := {}
+var _last_player_pos := Vector2.INF
 var punches := 0
 var orders_total := 0
 var orders_missed := 0
@@ -90,8 +93,13 @@ var _door_cooldown := 0.0
 
 
 func _ready() -> void:
-	randomize()
+	if GameState.seed_value >= 0:
+		seed(GameState.seed_value)
+	else:
+		randomize()
 	cfg = GameState.settings()
+	if GameState.fast:
+		Engine.time_scale = 4.0
 	if GameState.autotest:
 		_shadow_timer = 3.0
 		Engine.time_scale = 6.0
@@ -184,7 +192,8 @@ func _ready() -> void:
 	player.battery_drain = cfg["battery_drain"]
 	world.add_child(player)
 	player.set_camera_limits(level.world_size())
-	player.use_auto = GameState.autotest
+	player.use_auto = GameState.autotest or GameState.inputs_path != ""
+	_load_inputs()
 
 	_intruder_timer = cfg["first_intruder"]
 	if GameState.autotest:
@@ -258,6 +267,7 @@ func _physics_process(delta: float) -> void:
 	if ended:
 		return
 	elapsed += delta
+	_update_harness()
 	flash = maxf(0.0, flash - delta * 1.5)
 
 	for m in _messages:
@@ -280,6 +290,10 @@ func _physics_process(delta: float) -> void:
 	_update_music()
 	_update_doors(delta)
 	_update_calls(delta)
+	if not _window.is_empty():
+		if _last_player_pos != Vector2.INF:
+			_window["walked"] += player.global_position.distance_to(_last_player_pos)
+		_last_player_pos = player.global_position
 
 	for b in batteries.duplicate():
 		if b.global_position.distance_to(player.global_position) < 26.0:
@@ -322,35 +336,86 @@ func hour_label(h: int) -> String:
 	return "%d %s" % [h12, "PM" if hour >= 12 else "AM"]
 
 
-## Each hour the radio names a few clocks to punch before the next hour.
+## How many in-game hours each radio check covers, and rooms per check.
+func radio_hours() -> int:
+	return int(cfg["radio_hours"])
+
+
+func check_window_seconds() -> float:
+	return shift_len / HOURS * radio_hours()
+
+
+## Every `radio_hours` hours the radio names clocks to punch before the next
+## check, and previews the check after that so you can plan a route.
 func _update_rounds() -> void:
 	var h := current_hour()
-	if h == patrol_hour:
+	if not crew_sent and h >= 6:
+		crew_sent = true
+		_send_crew()
+	var window_start: int = h - h % radio_hours()
+	if window_start == patrol_hour:
 		return
 	if patrol_hour >= 0:
+		_log_window()
 		var missed: Array = checkpoints.filter(func(c): return c.ordered and not c.done)
 		if not missed.is_empty():
 			orders_missed += missed.size()
 			score -= 30 * missed.size()
 			message("Missed: %s" % ", ".join(missed.map(func(c): return c.cp_name)), 3.0)
 	var previous: Array = checkpoints.filter(func(c): return c.ordered)
-	patrol_hour = h
-	var count: int = mini(int(cfg["orders_per_hour"]), checkpoints.size())
+	patrol_hour = window_start
+	var picks: Array = _next_picks if not _next_picks.is_empty() else _pick_rooms(previous)
+	var has_next: bool = window_start + radio_hours() < HOURS
+	_next_picks = _pick_rooms(picks) if has_next else []
+	for cp in checkpoints:
+		cp.set_ordered(cp in picks)
+		cp.next_ordered = cp in _next_picks
+	orders_total += picks.size()
+	_window = {"start": elapsed, "rooms": picks.map(func(c): return c.cp_name), "punched": [],
+			"walked": 0.0, "entered": entered, "sabotages": sabotages, "twist": twist_events}
+	var text := "Radio, %s: punch %s." % [hour_label(window_start), _names(picks)]
+	if has_next:
+		text += " Next: %s." % _names(_next_picks)
+	message(text, 5.0)
+	Music.stinger("radio", -4.0)
+
+
+func _pick_rooms(avoid: Array) -> Array:
+	var count: int = mini(int(cfg["rooms_per_check"]), checkpoints.size())
 	var picks: Array = []
 	for attempt in 6:
 		picks = checkpoints.duplicate()
 		picks.shuffle()
 		picks = picks.slice(0, count)
-		if not _same_set(picks, previous):
+		if not _same_set(picks, avoid):
 			break
-	for cp in checkpoints:
-		cp.set_ordered(cp in picks)
-	orders_total += count
-	message("Radio, %s: punch %s." % [hour_label(h), ", ".join(picks.map(func(c): return c.cp_name))], 4.0)
-	Music.stinger("radio", -4.0)
-	if h == 6 and not crew_sent:
-		crew_sent = true
-		_send_crew()
+	return picks
+
+
+func _names(list: Array) -> String:
+	return ", ".join(list.map(func(c): return c.cp_name))
+
+
+func next_orders() -> Array:
+	return _next_picks
+
+
+## Test/data log: one line per check window (rooms, slack, distance, events).
+func _log_window() -> void:
+	if _window.is_empty() or not (GameState.autotest or GameState.log_windows):
+		return
+	var length := check_window_seconds()
+	var punched: Array = _window["punched"]
+	var all_done: bool = punched.size() >= _window["rooms"].size()
+	var slack := "missed"
+	if all_done:
+		var last: float = punched.max() if not punched.is_empty() else 0.0
+		slack = "%.1f" % (length - last)
+	print("WINDOW loc=%s diff=%d cfg=%dhx%d start=%s len=%.0f rooms=%d done=%d slack=%s walked=%.0f breakins=%d sabotage=%d twist=%d" % [
+		location.id, GameState.difficulty, radio_hours(), int(cfg["rooms_per_check"]),
+		hour_label(patrol_hour), length, _window["rooms"].size(), punched.size(), slack,
+		_window["walked"], entered - int(_window["entered"]), sabotages - int(_window["sabotages"]),
+		twist_events - int(_window["twist"])])
 
 
 func _same_set(a: Array, b: Array) -> bool:
@@ -415,6 +480,8 @@ func door_nearest(pos: Vector2):
 
 func on_punch(cp, was_jammed: bool) -> void:
 	punches += 1
+	if not _window.is_empty():
+		_window["punched"].append(elapsed - float(_window["start"]))
 	score += 50 + (50 if was_jammed else 0)
 	message(("Fixed and punched: %s" if was_jammed else "Punched in: %s") % cp.cp_name, 2.0)
 	Music.stinger("punch", -4.0)
@@ -884,6 +951,7 @@ func machines_running() -> Array:
 
 
 func _end_of_shift() -> void:
+	_log_window()
 	if orders_total > 0 and float(punches) / orders_total < 0.6:
 		_end(false, "6:00 AM. You skipped too many patrol orders - you're fired.")
 	else:
@@ -955,6 +1023,109 @@ func _autopilot() -> void:
 			player.auto_move = (path[1] - player.global_position).normalized()
 		elif path.size() == 1:
 			player.auto_move = (path[0] - player.global_position).normalized()
+
+
+# --- automated play harness (dev only; see README) ----------------------------
+
+var _inputs: Array = []     # [{ "t": float, "cmd": String, "args": PackedStringArray }]
+var _snaps: Array = []
+
+
+func _load_inputs() -> void:
+	_snaps = GameState.snap_times.duplicate()
+	if GameState.inputs_path == "":
+		return
+	var f := FileAccess.open(GameState.inputs_path, FileAccess.READ)
+	if f == null:
+		push_error("Cannot read inputs file %s" % GameState.inputs_path)
+		return
+	while not f.eof_reached():
+		var line := f.get_line().strip_edges()
+		if line == "" or line.begins_with("#"):
+			continue
+		var parts := line.split(" ", false)
+		if parts.size() >= 2:
+			_inputs.append({"t": float(parts[0]), "cmd": parts[1], "args": parts.slice(2)})
+	_inputs.sort_custom(func(a, b): return a["t"] < b["t"])
+
+
+func _update_harness() -> void:
+	while not _inputs.is_empty() and _inputs[0]["t"] <= elapsed:
+		_apply_input(_inputs.pop_front())
+	while not _snaps.is_empty() and _snaps[0] <= elapsed:
+		_snapshot(_snaps.pop_front())
+	if GameState.until_time > 0.0 and elapsed >= GameState.until_time and not ended:
+		ended = true
+		_finish_harness()
+
+
+func _finish_harness() -> void:
+	await _snapshot(elapsed)
+	print("HARNESS until reached at ", clock_text())
+	get_tree().quit()
+
+
+func _apply_input(i: Dictionary) -> void:
+	var a: PackedStringArray = i["args"]
+	match i["cmd"]:
+		"move":
+			player.auto_move = Vector2(float(a[0]), float(a[1])).limit_length(1.0) if a.size() >= 2 else Vector2.ZERO
+		"aim":
+			player.auto_aim = Vector2(float(a[0]), float(a[1])).normalized() if a.size() >= 2 else Vector2.ZERO
+		"hold":
+			Input.action_press("interact")
+		"release":
+			Input.action_release("interact")
+		"run":
+			if a.size() > 0 and a[0] == "on":
+				Input.action_press("run")
+			else:
+				Input.action_release("run")
+		"light":
+			player.flashlight_on = not player.flashlight_on
+		_:
+			push_warning("Unknown harness command: %s" % i["cmd"])
+
+
+func _cell_of(n: Node2D) -> Array:
+	var c: Vector2i = level.world_to_cell(n.global_position)
+	return [c.x, c.y]
+
+
+## Writes state_<t>.json (and shot_<t>.png when rendering) into --out.
+func _snapshot(t: float) -> void:
+	var state := {
+		"time": snappedf(t, 0.01), "clock": clock_text(), "location": location.id,
+		"difficulty": GameState.difficulty_name(), "score": score, "thefts": thefts,
+		"player": {"cell": _cell_of(player), "fear": snappedf(player.fear, 0.1),
+				"battery": snappedf(player.battery, 0.1), "stamina": snappedf(player.stamina, 0.1),
+				"light_on": player.flashlight_on, "aim": [snappedf(player.aim.x, 0.01), snappedf(player.aim.y, 0.01)]},
+		"orders": orders_open().map(func(c): return {"name": c.cp_name, "done": c.done, "jammed": c.jammed, "cell": _cell_of(c)}),
+		"next_orders": _next_picks.map(func(c): return c.cp_name),
+		"window_due": hour_label(maxi(patrol_hour, 0) + radio_hours()),
+		"near_device": near_device.action_label() if near_device != null else "",
+		"duties": {"alarm_armed": alarm.armed, "alarm_cut": alarm.cut,
+				"doors": doors.map(func(d): return {"name": d.door_name, "locked": d.locked, "cell": _cell_of(d)}),
+				"windows": windows.map(func(w): return {"room": w.room, "state": ["intact", "broken", "boarded"][w.pane], "cell": _cell_of(w)}),
+				"dead_wings": breaker.dead_wings(),
+				"shutters": shutters.map(func(x): return {"shop": x.shop, "closed": x.closed, "cell": _cell_of(x)}),
+				"calls": calls_active().map(func(c): return {"flat": c.flat, "time_left": snappedf(c.time_left, 0.1), "cell": _cell_of(c)}),
+				"machines": machines.map(func(m): return {"name": m.machine_name, "running": m.running, "overheated": m.overheated, "cell": _cell_of(m)})},
+		"intruders": intruders.map(func(it): return {"cell": _cell_of(it), "state": Intruder.State.keys()[it.state], "inside": it.inside, "lit": it.lit}),
+		"shadows": shadows.map(func(sh): return {"cell": _cell_of(sh), "lit": sh.lit}),
+		"messages": _messages.map(func(m): return m["text"]),
+	}
+	var dir := GameState.out_dir if GameState.out_dir != "" else "user://harness"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var tag := "%07.2f" % t
+	var f := FileAccess.open("%s/state_%s.json" % [dir, tag], FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(state, "  "))
+		f.close()
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("%s/shot_%s.png" % [dir, tag])
+	print("HARNESS snap t=%s %s" % [tag, clock_text()])
 
 
 func _draw_noises() -> void:

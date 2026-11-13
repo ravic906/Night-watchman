@@ -73,6 +73,25 @@ Developer flags (put them after `--` on the command line):
 - `--screenshot=/path/shot.png` saves a frame after 3 seconds and quits.
 - `--start-cell=X,Y` starts the watchman at that map cell.
 
+## Automated playtesting
+The game can be played by a script, which lets bots and test agents play the real game reproducibly:
+
+```
+godot --headless --fixed-fps 60 --path . res://scenes/game.tscn -- \
+    --location=museum --difficulty=normal --seed=7 \
+    --inputs=inputs.txt --snap=5,30,60 --until=60 --out=/tmp/run1 [--fast]
+```
+
+- `--seed=N` makes every run with the same inputs identical (use `--fixed-fps 60` too).
+- `--inputs=FILE` holds one timed command per line, in game seconds (45 s = one in-game hour):
+  `T move DX DY` (keep walking that way; `0 0` stops), `T aim DX DY`, `T hold use` / `T release use`,
+  `T run on|off`, `T light` (toggle the flashlight). Lines starting with `#` are comments.
+- `--snap=T1,T2,...` writes `state_T.json` (player, orders, duties, thieves, Shadow, messages) to `--out`,
+  plus `shot_T.png` when rendering (run under `xvfb-run` without `--headless` for screenshots).
+- `--until=T` stops at game time T; `--fast` runs at 4x speed.
+- `--radio-hours=1|2` and `--rooms=1|2` override the patrol schedule; `--log-windows` prints one
+  `WINDOW` line per radio check (rooms, slack, distance walked, break-ins, sabotage).
+
 ## Exporting to mobile
 The project already uses the mobile-friendly **Compatibility** renderer, a landscape orientation, a stretch mode that fits any screen, and touch controls that appear on touchscreen devices.
 
