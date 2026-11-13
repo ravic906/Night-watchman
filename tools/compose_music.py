@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Composes Night Watchman's adaptive score in code and writes it to audio/*.ogg.
+"""Composes Night Watchman's adaptive score and sound effects in code and writes it to audio/*.ogg.
 
 Loops are exactly LOOP seconds long. Every sustained frequency fits a whole
 number of cycles in the loop, and every effect (echo, reverb, filtered noise)
@@ -294,6 +294,89 @@ def make_punch():
     return normalize(lin_reverb(buf, 0.15, 0.5), 0.7)
 
 
+# ---------------------------------------------------------------- sound effects
+
+def lin_filter(x, lo=None, hi=None):
+    """Band filter for one-shots (zero-padded so nothing wraps around)."""
+    pad = int(SR * 0.05)
+    y = circ_filter(np.concatenate([x, np.zeros(pad)]), lo=lo, hi=hi)
+    return y[: x.size]
+
+
+def make_step(seed):
+    """Watchman's boot on a tiled floor: heel thud + hard tile tick."""
+    r = np.random.default_rng(seed)
+    t = env_t(0.3)
+    heel = np.zeros_like(t)
+    th = thump(120 + r.uniform(-15, 15), 60 + r.uniform(-8, 8), 0.2, click=0.3)
+    heel[: th.size] += th * 0.6
+    tick = r.standard_normal(t.size) * np.exp(-t / 0.004)
+    tick = lin_filter(tick, lo=1800, hi=7000) * r.uniform(0.5, 0.8)
+    scuff = lin_filter(r.standard_normal(t.size), lo=500, hi=3000)
+    scuff *= np.exp(-np.maximum(0, t - 0.03) / 0.03) * (t > 0.03) * r.uniform(0.05, 0.12)
+    out = heel + tick + scuff
+    return normalize(lin_reverb(stereo(out), 0.18, 0.5), 0.8)
+
+
+def make_sneak(seed):
+    """A thief's soft-soled creep: muffled pad and a fabric scuff."""
+    r = np.random.default_rng(seed)
+    t = env_t(0.35)
+    pad = thump(80 + r.uniform(-10, 10), 45, 0.15, click=0.05) * 0.4
+    out = np.zeros_like(t)
+    out[: pad.size] += pad
+    scuff = lin_filter(r.standard_normal(t.size), lo=350, hi=2200)
+    env = np.minimum(1, t / 0.02) * np.exp(-t / 0.07)
+    out += scuff * env * 0.5
+    return normalize(lin_reverb(stereo(out), 0.25, 0.6), 0.8)
+
+
+def creak(seconds, rate_curve, resonances=(620, 1250, 2300), jitter=0.25, seed=3):
+    """Hinge creak: a stick-slip pulse train ringing through a few resonances."""
+    r = np.random.default_rng(seed)
+    t = env_t(seconds)
+    rate = rate_curve(t / seconds)
+    phase = np.cumsum(rate) / SR
+    pulses = np.zeros_like(t)
+    hits = np.nonzero(np.diff(np.floor(phase)) > 0)[0]
+    pulses[hits] = 1.0 + r.uniform(-jitter, jitter, hits.size)
+    ir_t = env_t(0.03)
+    ir = sum(np.sin(2 * np.pi * f * ir_t) * np.exp(-ir_t / (0.012 - i * 0.002)) / (i + 1)
+             for i, f in enumerate(resonances))
+    out = np.convolve(pulses, ir)[: t.size]
+    env = np.minimum(1, t / 0.08) * np.minimum(1, (seconds - t) / 0.15)
+    return out * env
+
+
+def make_door_creak():
+    out = creak(1.4, lambda u: 28 + 70 * np.sin(np.pi * u) ** 1.5 + 12 * np.sin(17 * u))
+    latch = np.zeros(int(SR * 1.6))
+    latch[: out.size] += out
+    cl = click(0.04, 1500) * 0.5
+    place_at = int(SR * 1.42)
+    latch[place_at: place_at + cl.size] += cl
+    return normalize(lin_reverb(stereo(latch), 0.35, 1.5), 0.85)
+
+
+def make_door_swing():
+    out = creak(0.55, lambda u: 55 + 60 * u, resonances=(800, 1600, 2700), seed=7)
+    return normalize(lin_reverb(stereo(out), 0.25, 0.8), 0.7)
+
+
+def make_door_slam():
+    t = env_t(1.0)
+    out = np.zeros_like(t)
+    th = thump(95, 42, 0.7, click=0.7)
+    out[: th.size] += th
+    r = np.random.default_rng(11)
+    for i in range(6):  # frame and latch rattle
+        at = int(SR * (0.03 + i * 0.035 + r.uniform(0, 0.01)))
+        cl = click(0.03, 1200) * 0.5 * 0.7 ** i
+        out[at: at + cl.size] += cl
+    out = lin_filter(out, hi=5000)
+    return normalize(lin_reverb(stereo(out), 0.4, 1.4), 0.9)
+
+
 # ---------------------------------------------------------------- output
 
 def write_ogg(path, x, quality=4):
@@ -359,7 +442,14 @@ def main():
         "dawn": make_dawn(),
         "fail": make_fail(),
         "punch": make_punch(),
+        "door_creak": make_door_creak(),
+        "door_swing": make_door_swing(),
+        "door_slam": make_door_slam(),
     }
+    for i in range(4):
+        stingers[f"step_{i + 1}"] = make_step(100 + i)
+    for i in range(3):
+        stingers[f"sneak_{i + 1}"] = make_sneak(200 + i)
     for name, x in {**layers, **stingers}.items():
         peak = float(np.abs(x).max())
         seam = f"  loop seam {loop_seam(x):.2f}x avg step" if name in layers else ""

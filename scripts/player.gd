@@ -146,7 +146,10 @@ func _physics_process(delta: float) -> void:
 		light.energy = 1.25 if _flicker > 0.12 else randf_range(0.1, 0.6)
 
 	if velocity.length() > 1.0:
+		var before := floori(_walk_phase / PI)
 		_walk_phase += delta * (14.0 if running else 9.0)
+		if floori(_walk_phase / PI) != before:
+			Music.stinger("step", -7.0 if running else -12.0, randf_range(0.9, 1.08))
 	queue_redraw()
 
 

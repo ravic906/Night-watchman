@@ -60,7 +60,12 @@ func _follow(delta: float, spd: float) -> bool:
 		return true
 	var to := _path[_path_i] - global_position
 	var step := spd * delta
+	var before := floori(_walk_phase / PI)
 	_walk_phase += delta * spd * 0.08
+	if floori(_walk_phase / PI) != before:
+		var running := state == State.FLEE or state == State.ESCAPE
+		Music.sfx_at("step" if running else "sneak", global_position,
+				-4.0 if running else -6.0, randf_range(0.85, 1.05), 700.0)
 	if to.length() <= step:
 		global_position = _path[_path_i]
 		_path_i += 1
@@ -128,6 +133,7 @@ func _physics_process(delta: float) -> void:
 
 func _leave() -> void:
 	_gone = true
+	Music.sfx_at("door_slam", global_position, -2.0, randf_range(0.9, 1.05), 1400.0)
 	game.intruders.erase(self)
 	glow.queue_free()
 	queue_free()

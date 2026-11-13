@@ -10,9 +10,10 @@ The score adapts to what is happening:
 - a low drone and wind are always there; a music-box melody plays while things are calm
 - a **heartbeat** fades in and speeds up as your fear rises
 - dissonant tremolo **strings** and a ticking clock come in when the Shadow is close, a thief is nearby, or your battery is dying
+- **sound effects**: the watchman's boots on the tiles (faster when running); thieves' soft sneaking steps, heard from the direction they're in; outside doors that creak when a thief comes in and slam when one leaves; and interior doors that swing when you walk through
 - stingers play when you punch a clock, scare off a thief, lose an item, get touched by the Shadow, and when the shift ends
 
-`tools/compose_music.py` composes every track with numpy and writes them to `audio/*.ogg`. To change or regenerate the music, run `python3 tools/compose_music.py` (needs numpy and ffmpeg). The mixing logic is in `scripts/music.gd`. You can turn sound on or off from the main menu.
+`tools/compose_music.py` composes every track and sound effect with numpy and writes them to `audio/*.ogg`. To change or regenerate the music, run `python3 tools/compose_music.py` (needs numpy and ffmpeg). The mixing logic is in `scripts/music.gd`. You can turn sound on or off from the main menu.
 
 ## How to play
 - **Do your rounds.** Punch all 5 clocks (red blinking lights) once before 2 AM, then again before 6 AM.

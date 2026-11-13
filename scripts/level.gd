@@ -65,6 +65,8 @@ var wall_node: Node2D
 
 var _walls := {}
 var _doors := {}
+## Interior doorways (one-tile gaps in a wall) -> seconds since last swing.
+var _doorways := {}
 var _floor_seed := []
 
 
@@ -105,6 +107,14 @@ func build() -> void:
 	for i in CHECKPOINT_NAMES.size():
 		if cp_slots.has(i):
 			checkpoints.append({"name": CHECKPOINT_NAMES[i], "pos": cp_slots[i]})
+
+	for cell in floor_cells:
+		if _doors.has(cell):
+			continue
+		var lr := _walls.has(cell + Vector2i.LEFT) and _walls.has(cell + Vector2i.RIGHT)
+		var ud := _walls.has(cell + Vector2i.UP) and _walls.has(cell + Vector2i.DOWN)
+		if lr or ud:
+			_doorways[cell] = 99.0
 
 	_build_collision()
 	_build_astar()
@@ -190,6 +200,25 @@ func world_to_cell(pos: Vector2) -> Vector2i:
 	return Vector2i(clampi(int(pos.x / TILE), 0, width - 1), clampi(int(pos.y / TILE), 0, height - 1))
 
 
+func is_doorway(cell: Vector2i) -> bool:
+	return _doorways.has(cell)
+
+
+func swing_door(cell: Vector2i) -> void:
+	if _doorways.has(cell):
+		_doorways[cell] = 0.0
+
+
+func _process(delta: float) -> void:
+	var animating := false
+	for cell in _doorways:
+		if _doorways[cell] < 3.0:
+			_doorways[cell] += delta
+			animating = true
+	if animating and wall_node:
+		wall_node.queue_redraw()
+
+
 func is_wall(cell: Vector2i) -> bool:
 	return _walls.has(cell)
 
@@ -255,8 +284,34 @@ func _draw_walls() -> void:
 		var r := Rect2(cell.x * TILE + 6, cell.y * TILE + 2, TILE - 12, TILE - 4)
 		wall_node.draw_rect(r, Color(0.28, 0.17, 0.1))
 		wall_node.draw_rect(r, Color(0.45, 0.3, 0.18), false, 2.0)
+	for cell in _doorways:
+		_draw_door(cell, _doorways[cell])
 	var font := ThemeDB.fallback_font
 	for label in ROOM_LABELS:
 		var cell: Vector2i = label[1]
 		wall_node.draw_string(font, Vector2(cell.x * TILE + 8, cell.y * TILE + 22), label[0],
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.55, 0.6, 0.8, 0.35))
+
+
+## A door leaf hinged on the doorway's wall, standing open. After the
+## watchman walks through it swings part-way shut and settles back.
+func _draw_door(cell: Vector2i, since_swing: float) -> void:
+	var passage_vertical := _walls.has(cell + Vector2i.LEFT)  # walls left/right -> walk up/down
+	var hinge: Vector2
+	var closed: float
+	if passage_vertical:
+		hinge = Vector2(cell.x * TILE, cell.y * TILE + TILE / 2.0)
+		closed = 0.0            # leaf pointing right, across the gap
+	else:
+		hinge = Vector2(cell.x * TILE + TILE / 2.0, cell.y * TILE)
+		closed = PI / 2.0       # leaf pointing down, across the gap
+	var swing := 0.0
+	if since_swing < 3.0:
+		swing = 1.1 * sin(since_swing * 7.0) * exp(-since_swing * 2.2)
+	var angle := closed + PI / 2.0 - absf(swing)
+	var length := TILE * 0.9
+	wall_node.draw_arc(hinge, length, closed, closed + PI / 2.0, 12, Color(0.45, 0.32, 0.2, 0.18), 1.0)
+	var tip := hinge + Vector2.from_angle(angle) * length
+	wall_node.draw_line(hinge, tip, Color(0.42, 0.27, 0.15), 5.0)
+	wall_node.draw_line(hinge, tip, Color(0.6, 0.42, 0.25), 1.5)
+	wall_node.draw_circle(hinge, 3.0, Color(0.7, 0.6, 0.35))

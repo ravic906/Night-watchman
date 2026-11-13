@@ -52,6 +52,8 @@ var _event_timer := 18.0
 var _shadow_timer := 35.0
 var _noises: Array = []   # [{ "pos": Vector2, "age": float, "color": Color }]
 var _messages: Array = []
+var _last_cell := Vector2i(-1, -1)
+var _door_cooldown := 0.0
 
 
 func _ready() -> void:
@@ -189,6 +191,7 @@ func _physics_process(delta: float) -> void:
 	_update_spawns(delta)
 	_update_events(delta)
 	_update_music()
+	_update_doors(delta)
 
 	for b in batteries.duplicate():
 		if b.global_position.distance_to(player.global_position) < 26.0:
@@ -292,6 +295,7 @@ func _spawn_intruder() -> void:
 	world.add_child(it)
 	intruders.append(it)
 	add_noise(entry, Color(1.0, 0.7, 0.4))
+	Music.sfx_at("door_creak", entry, 0.0, randf_range(0.85, 1.05), 1400.0)
 
 
 func _spawn_battery() -> void:
@@ -321,7 +325,9 @@ func _update_events(delta: float) -> void:
 				message("The lights flicker...", 2.5)
 		1:
 			var pos: Vector2 = level.random_floor_far_from(player.global_position, 150.0)
-			add_noise(player.global_position + (pos - player.global_position).limit_length(450.0), Color(0.7, 0.7, 0.7))
+			var at := player.global_position + (pos - player.global_position).limit_length(450.0)
+			add_noise(at, Color(0.7, 0.7, 0.7))
+			Music.sfx_at("door_creak", at, -3.0, randf_range(0.7, 1.0), 1200.0)
 			message(["A door creaks somewhere.", "Footsteps? No... just the pipes.", "Something fell over."].pick_random(), 2.5)
 			player.fear = minf(100.0, player.fear + 3.0)
 		2:
@@ -331,6 +337,17 @@ func _update_events(delta: float) -> void:
 				player.fear = minf(100.0, player.fear + 6.0)
 			elif not live_lamps.is_empty():
 				live_lamps.pick_random().flicker(randf_range(1.0, 3.0))
+
+
+func _update_doors(delta: float) -> void:
+	_door_cooldown = maxf(0.0, _door_cooldown - delta)
+	var cell: Vector2i = level.world_to_cell(player.global_position)
+	if cell != _last_cell:
+		_last_cell = cell
+		if level.is_doorway(cell) and _door_cooldown <= 0.0:
+			_door_cooldown = 1.2
+			Music.stinger("door_swing", -9.0, randf_range(0.9, 1.15))
+			level.swing_door(cell)
 
 
 ## Danger (0..1) drives the string layer: the Shadow closing in, a thief

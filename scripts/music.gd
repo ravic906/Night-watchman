@@ -4,7 +4,11 @@ extends Node
 ## watchman's fear and the danger around him; stingers punctuate events.
 
 const LOOP_NAMES := ["drone", "heartbeat", "tension", "musicbox"]
-const STINGER_NAMES := ["scare", "theft", "spotted", "dawn", "fail", "punch"]
+const STINGER_NAMES := ["scare", "theft", "spotted", "dawn", "fail", "punch",
+		"door_creak", "door_swing", "door_slam",
+		"step_1", "step_2", "step_3", "step_4", "sneak_1", "sneak_2", "sneak_3"]
+## Names that pick a random take, so repeated sounds do not feel mechanical.
+const VARIANTS := {"step": 4, "sneak": 3}
 const FADE_SPEED := 1.5
 const MIN_LINEAR := 0.001
 
@@ -82,16 +86,43 @@ func end_shift(win: bool) -> void:
 	stinger("dawn" if win else "fail")
 
 
-func stinger(stinger_name: String, volume_db := 0.0) -> void:
-	if not enabled or not _stingers.has(stinger_name):
+func stinger(stinger_name: String, volume_db := 0.0, pitch := 1.0) -> void:
+	var stream := _resolve(stinger_name)
+	if not enabled or stream == null:
 		return
 	var p := AudioStreamPlayer.new()
-	p.stream = _stingers[stinger_name]
+	p.stream = stream
 	p.bus = "SFX"
 	p.volume_db = volume_db
+	p.pitch_scale = pitch
 	add_child(p)
 	p.finished.connect(p.queue_free)
 	p.play()
+
+
+## A sound effect from a world position: louder when close to the camera
+## (which follows the watchman), silent beyond max_distance.
+func sfx_at(sound_name: String, pos: Vector2, volume_db := 0.0, pitch := 1.0, max_distance := 900.0) -> void:
+	var stream := _resolve(sound_name)
+	if not enabled or stream == null:
+		return
+	var p := AudioStreamPlayer2D.new()
+	p.stream = stream
+	p.bus = "SFX"
+	p.volume_db = volume_db
+	p.pitch_scale = pitch
+	p.max_distance = max_distance
+	p.attenuation = 1.6
+	p.position = pos
+	add_child(p)
+	p.finished.connect(p.queue_free)
+	p.play()
+
+
+func _resolve(sound_name: String) -> AudioStream:
+	if VARIANTS.has(sound_name):
+		sound_name = "%s_%d" % [sound_name, randi_range(1, VARIANTS[sound_name])]
+	return _stingers.get(sound_name)
 
 
 func set_enabled(on: bool) -> void:
@@ -114,8 +145,8 @@ func _process(delta: float) -> void:
 func _exit_tree() -> void:
 	# Stop playback before shutdown so the audio server releases the streams.
 	for child in get_children():
-		if child is AudioStreamPlayer:
-			(child as AudioStreamPlayer).stop()
+		if child is AudioStreamPlayer or child is AudioStreamPlayer2D:
+			child.stop()
 			child.stream = null
 	_loops.clear()
 	_stingers.clear()
