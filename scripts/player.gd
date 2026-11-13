@@ -20,6 +20,7 @@ var stunned := 0.0
 ## Set by the game for the self-playing smoke test.
 var use_auto := false
 var auto_move := Vector2.ZERO
+var auto_aim := Vector2.ZERO
 
 var light: PointLight2D
 var glow_light: PointLight2D
@@ -125,7 +126,9 @@ func _physics_process(delta: float) -> void:
 	velocity = input * (RUN_SPEED if running else WALK_SPEED)
 	move_and_slide()
 
-	if _mouse_aiming():
+	if use_auto and auto_aim != Vector2.ZERO:
+		aim = auto_aim
+	elif _mouse_aiming():
 		var to_mouse := get_global_mouse_position() - global_position
 		if to_mouse.length() > 4.0:
 			aim = to_mouse.normalized()

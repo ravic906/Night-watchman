@@ -98,14 +98,20 @@ func _draw_duties(font: Font, size: Vector2) -> void:
 	var total: int = game.doors.size()
 	lines.append(["%s Doors locked %d/%d" % ["[x]" if locked == total else "[ ]", locked, total],
 			OK_COL if locked == total else TODO_COL, 15])
+	var broken: int = game.windows_broken()
+	if broken == 0:
+		lines.append(["[x] Windows secure", OK_COL, 15])
+	else:
+		lines.append(["[!] Windows broken: %d" % broken, BAD_COL, 15])
 	var dead: Array = game.breaker.dead_wings()
 	if dead.is_empty():
 		lines.append(["[x] Power OK", OK_COL, 15])
 	else:
 		lines.append(["[!] Power out: %s" % ", ".join(dead), BAD_COL, 15])
-	lines.append(["CLOCKS - ROUND %d/2" % game.patrol_round, DIM_COL, 13])
-	for cp in game.checkpoints:
-		if cp.jammed:
+	var hr: int = maxi(game.patrol_hour, 0)
+	lines.append(["PATROL %s - DUE BY %s" % [game.hour_label(hr), game.hour_label(hr + 1)], DIM_COL, 13])
+	for cp in game.orders_open():
+		if cp.jammed and not cp.done:
 			lines.append(["[!] %s (jammed)" % cp.cp_name, BAD_COL, 15])
 		elif cp.done:
 			lines.append(["[x] %s" % cp.cp_name, OK_COL, 15])

@@ -16,6 +16,35 @@ func _ready() -> void:
 	glow.position = global_position
 
 
+# --- entrance API (shared with window.gd) -------------------------------------
+
+func entrance_label() -> String:
+	return "%s door" % door_name
+
+
+func is_open() -> bool:
+	return not locked
+
+
+## Thieves can always leave by a door (they unlock it from inside).
+func passable_exit() -> bool:
+	return true
+
+
+func entry_work_time(cfg: Dictionary) -> float:
+	return cfg["lockpick_time"]
+
+
+func work_sound() -> String:
+	return "lockpick"
+
+
+func force_open(game) -> void:
+	locked = false
+	refresh()
+	game.on_lock_picked(null, self)
+
+
 # --- guard interaction -------------------------------------------------------
 
 func needs_action() -> bool:

@@ -14,6 +14,7 @@ const TouchControls = preload("res://scripts/touch_controls.gd")
 const AlarmPanel = preload("res://scripts/alarm_panel.gd")
 const BreakerBox = preload("res://scripts/breaker_box.gd")
 const OutsideDoor = preload("res://scripts/outside_door.gd")
+const WindowPane = preload("res://scripts/window.gd")
 
 const SHIFT_SECONDS := 360.0     # 10 PM -> 6 AM
 const START_HOUR := 22
@@ -36,6 +37,9 @@ var intruders: Array = []
 var shadows: Array = []
 var batteries: Array = []
 var doors: Array = []
+var windows: Array = []
+## Every way into the building: doors + windows.
+var entrances: Array = []
 var alarm = null
 var breaker = null
 ## Everything the watchman can hold "interact" on: clocks, alarm, breaker, doors.
@@ -43,8 +47,13 @@ var devices: Array = []
 
 var shift_len := SHIFT_SECONDS
 var elapsed := 0.0
-var patrol_round := 1
+## Hourly patrol orders: which hour (0 = 10 PM) and how the night is going.
+var patrol_hour := -1
 var punches := 0
+var orders_total := 0
+var orders_missed := 0
+var crew_sent := false
+var retries := 0
 var thefts := 0
 var scared := 0
 var score := 0
@@ -60,6 +69,7 @@ var _event_timer := 18.0
 var _shadow_timer := 35.0
 var _noises: Array = []   # [{ "pos": Vector2, "age": float, "color": Color }]
 var _messages: Array = []
+var _retry_queue: Array = []   # [{ "time": float, "avoid": entrance, "retries": int }]
 var _last_cell := Vector2i(-1, -1)
 var _door_cooldown := 0.0
 
@@ -68,9 +78,8 @@ func _ready() -> void:
 	randomize()
 	cfg = GameState.settings()
 	if GameState.autotest:
-		shift_len = 120.0
 		_shadow_timer = 3.0
-		Engine.time_scale = 4.0
+		Engine.time_scale = 6.0
 
 	world = Node2D.new()
 	world.name = "World"
@@ -118,7 +127,13 @@ func _ready() -> void:
 		door.door_name = "west" if pos.x < level.world_size().x / 2.0 else "east"
 		world.add_child(door)
 		doors.append(door)
-	devices = checkpoints + [alarm, breaker] + doors
+	for w in level.windows:
+		var win = _spawn(WindowPane, w["pos"], false)
+		win.room = w["name"]
+		world.add_child(win)
+		windows.append(win)
+	entrances = doors + windows
+	devices = checkpoints + [alarm, breaker] + doors + windows
 
 	player = Player.new()
 	player.name = "Watchman"
@@ -148,7 +163,7 @@ func _ready() -> void:
 	Music.play_game()
 	message(cfg["title"], 4.0)
 	message("Lock both outside doors and arm the alarm in the lobby.", 6.0)
-	message("Punch all 5 clocks before 2 AM, then again before 6 AM.", 6.0)
+	message("Every hour the radio tells you which clocks to punch.", 6.0)
 
 
 ## Creates an entity in the world plus its partner node in the glow layer.
@@ -224,7 +239,11 @@ func _physics_process(delta: float) -> void:
 			b.remove()
 			message("Fresh batteries. +45%", 2.0)
 
-	if player.fear >= 100.0:
+	if GameState.autotest_survive:
+		player.fear = minf(player.fear, 90.0)
+		if elapsed >= shift_len:
+			_end_of_shift()
+	elif player.fear >= 100.0:
 		_end(false, "Terror got the better of you. You fled your post.")
 	elif thefts >= MAX_THEFTS:
 		_end(false, "Too much was stolen on your watch.")
@@ -232,12 +251,63 @@ func _physics_process(delta: float) -> void:
 		_end_of_shift()
 
 
+const HOURS := 8   # 10 PM -> 6 AM
+
+
+func current_hour() -> int:
+	return mini(int(elapsed / shift_len * HOURS), HOURS - 1)
+
+
+## How far through the night we are (0 at 10 PM, 1 at 6 AM).
+func night_progress() -> float:
+	return clampf(elapsed / shift_len, 0.0, 1.0)
+
+
+func hour_label(h: int) -> String:
+	var hour := (START_HOUR + h) % 24
+	var h12 := hour % 12
+	if h12 == 0:
+		h12 = 12
+	return "%d %s" % [h12, "PM" if hour >= 12 else "AM"]
+
+
+## Each hour the radio names a few clocks to punch before the next hour.
 func _update_rounds() -> void:
-	if patrol_round == 1 and elapsed >= shift_len * 0.5:
-		patrol_round = 2
-		for cp in checkpoints:
-			cp.reset_round()
-		message("2:00 AM - second round. Punch every clock again.", 4.0)
+	var h := current_hour()
+	if h == patrol_hour:
+		return
+	if patrol_hour >= 0:
+		var missed: Array = checkpoints.filter(func(c): return c.ordered and not c.done)
+		if not missed.is_empty():
+			orders_missed += missed.size()
+			score -= 30 * missed.size()
+			message("Missed: %s" % ", ".join(missed.map(func(c): return c.cp_name)), 3.0)
+	var previous: Array = checkpoints.filter(func(c): return c.ordered)
+	patrol_hour = h
+	var count: int = mini(int(cfg["orders_per_hour"]), checkpoints.size())
+	var picks: Array = []
+	for attempt in 6:
+		picks = checkpoints.duplicate()
+		picks.shuffle()
+		picks = picks.slice(0, count)
+		if not _same_set(picks, previous):
+			break
+	for cp in checkpoints:
+		cp.set_ordered(cp in picks)
+	orders_total += count
+	message("Radio, %s: punch %s." % [hour_label(h), ", ".join(picks.map(func(c): return c.cp_name))], 4.0)
+	Music.stinger("radio", -4.0)
+	if h == 6 and not crew_sent:
+		crew_sent = true
+		_send_crew()
+
+
+func _same_set(a: Array, b: Array) -> bool:
+	return a.size() == b.size() and a.all(func(x): return x in b)
+
+
+func orders_open() -> Array:
+	return checkpoints.filter(func(c): return c.ordered)
 
 
 ## Hold "interact" next to the nearest device that needs attention.
@@ -263,7 +333,8 @@ func _update_interaction(delta: float) -> void:
 
 
 func sabotage_targets() -> Array:
-	return checkpoints + [alarm, breaker]
+	# Jamming only matters for clocks on the current orders.
+	return checkpoints.filter(func(c): return c.ordered and not c.done) + [alarm, breaker]
 
 
 func alarm_armed() -> bool:
@@ -350,6 +421,38 @@ func on_lock_picked(_intruder, door) -> void:
 		message("ALARM: the %s door lock was forced!" % door.door_name, 3.0)
 
 
+func on_window_forced(win, smashed: bool) -> void:
+	sabotages += 1
+	if smashed:
+		Music.sfx_at("glass_break", win.global_position, 2.0, randf_range(0.9, 1.1), 2600.0)
+		add_noise(win.global_position, Color(0.7, 0.85, 1.0))
+		player.fear = minf(100.0, player.fear + 4.0)
+		message("Glass shatters in the %s!" % win.room, 3.0)
+	elif alarm_armed():
+		message("ALARM: the boards on the %s window were pried off!" % win.room, 3.0)
+
+
+func on_window_boarded(win) -> void:
+	score += 40
+	message("The %s window is boarded up." % win.room, 2.0)
+	Music.stinger("board", -3.0)
+
+
+func windows_broken() -> int:
+	return windows.filter(func(w): return w.is_open()).size()
+
+
+## A thief scared away from an entrance tries again elsewhere, once.
+func on_entry_foiled(intruder, entrance) -> void:
+	scared += 1
+	score += 100
+	message("You scared someone away from the %s!" % entrance.entrance_label(), 2.5)
+	Music.stinger("spotted", -3.0)
+	if intruder.retries_left > 0:
+		_retry_queue.append({"time": randf_range(6.0, 10.0), "avoid": entrance,
+				"retries": intruder.retries_left - 1})
+
+
 func on_saboteur_caught(_intruder) -> void:
 	scared += 1
 	score += 150
@@ -361,17 +464,25 @@ func on_saboteur_caught(_intruder) -> void:
 
 func on_intruder_entered(_intruder, door) -> void:
 	entered += 1
-	var where: String = door.door_name if door != null else "?"
-	Music.sfx_at("door_creak", door.global_position if door != null else player.global_position,
-			0.0, randf_range(0.85, 1.05), 1400.0)
+	if GameState.autotest:
+		print("ENTER ", clock_text())
+	var where: String = door.entrance_label() if door != null else "?"
+	if door != null and door in doors:
+		Music.sfx_at("door_creak", door.global_position, 0.0, randf_range(0.85, 1.05), 1400.0)
 	if alarm_armed():
-		message("ALARM: break-in at the %s door! (%d inside)" % [where, intruders_inside()], 3.5)
+		message("ALARM: break-in at the %s! (%d inside)" % [where, intruders_inside()], 3.5)
 		Music.stinger("alarm_chime", -2.0)
 
 
 func on_intruder_exit(_intruder, pos: Vector2) -> void:
-	var door = door_nearest(pos)
-	if door != null and door.locked:
+	var door = null
+	var best := INF
+	for e in entrances:
+		var d: float = e.global_position.distance_to(pos)
+		if d < best:
+			best = d
+			door = e
+	if door != null and door in doors and door.locked:
 		door.locked = false
 		door.refresh()
 		if alarm_armed():
@@ -401,12 +512,21 @@ func _update_fear(delta: float) -> void:
 func _update_spawns(delta: float) -> void:
 	_intruder_timer -= delta
 	if _intruder_timer <= 0.0:
-		_intruder_timer = cfg["intruder_interval"] * randf_range(0.8, 1.2)
-		if doors_locked() < doors.size():
-			_intruder_timer *= 0.7  # an open door invites company
-		var any_left := valuables.any(func(v): return v.available())
-		if intruders.size() < cfg["intruder_max"] and any_left:
+		# Thieves come more often as the night wears on.
+		var late: float = lerpf(1.0, float(cfg["late_interval_mult"]), night_progress())
+		_intruder_timer = cfg["intruder_interval"] * late * randf_range(0.8, 1.2)
+		if entrances.any(func(e): return e.is_open()):
+			_intruder_timer *= 0.7  # an open way in invites company
+		if intruders.size() < intruder_cap() and _any_loot_left():
 			_spawn_intruder()
+
+	for r in _retry_queue:
+		r["time"] -= delta
+	for r in _retry_queue.filter(func(r): return r["time"] <= 0.0):
+		_retry_queue.erase(r)
+		if _any_loot_left() and _spawn_intruder(r["avoid"], r["retries"]) != null:
+			retries += 1
+			add_noise(player.global_position, Color(0.8, 0.8, 0.8))
 
 	_battery_timer -= delta
 	if _battery_timer <= 0.0:
@@ -427,27 +547,62 @@ func _update_spawns(delta: float) -> void:
 			player.fear = minf(100.0, player.fear + 10.0)
 
 
-func _spawn_intruder() -> void:
-	# Thieves prefer an unlocked door; otherwise they pick a lock nobody is
-	# already working on.
-	var open := doors.filter(func(d): return not d.locked)
-	var free := doors.filter(func(d): return d.locked and d.picker == null)
-	var door = null
-	if not open.is_empty():
-		door = open.pick_random()
-	elif not free.is_empty():
-		door = free.pick_random()
-	else:
-		return
-	var it = _spawn(Intruder, door.global_position, false)
+## More thieves can be inside at once late in the night.
+func intruder_cap() -> int:
+	var cap := int(cfg["intruder_max"])
+	if night_progress() >= 0.5:
+		cap += 1
+	if night_progress() >= 0.75:
+		cap += 1
+	return cap
+
+
+func _any_loot_left() -> bool:
+	return valuables.any(func(v): return v.available())
+
+
+## Thieves choose the entrance farthest from the watchman, preferring ones
+## that are already open, and never one somebody is already working on.
+func _choose_entrance(avoid = null, taken: Array = []):
+	var best = null
+	var best_score := -INF
+	for e in entrances:
+		if e == avoid or e in taken or e.picker != null:
+			continue
+		var s: float = e.global_position.distance_to(player.global_position)
+		s += 350.0 if e.is_open() else 0.0
+		s += randf() * 300.0
+		if s > best_score:
+			best_score = s
+			best = e
+	return best
+
+
+func _spawn_intruder(avoid = null, retries_left := 1, taken: Array = []):
+	var entrance = _choose_entrance(avoid, taken)
+	if entrance == null:
+		return null
+	var it = _spawn(Intruder, entrance.global_position, false)
 	it.game = self
-	it.door = door
+	it.door = entrance
+	it.retries_left = retries_left
 	it.speed = cfg["intruder_speed"]
 	it.expose_time = cfg["expose_time"]
-	it.sabotage_chance = cfg["sabotage_chance"]
-	it.lockpick_time = cfg["lockpick_time"]
+	it.sabotage_chance = float(cfg["sabotage_chance"]) + 0.15 * night_progress()
 	intruders.append(it)
 	world.add_child(it)
+	return it
+
+
+## 4 AM: a crew hits several entrances at once.
+func _send_crew() -> void:
+	message("Dispatch: a crew is heading your way. Hold the building!", 4.5)
+	player.fear = minf(100.0, player.fear + 8.0)
+	var taken: Array = []
+	for i in int(cfg["crew_size"]):
+		var it = _spawn_intruder(null, 0, taken)
+		if it != null:
+			taken.append(it.door)
 
 
 func _spawn_battery() -> void:
@@ -528,8 +683,11 @@ func on_item_grabbed(intruder, _valuable) -> void:
 	message("You hear glass breaking!", 2.5)
 
 
-func on_theft(_intruder, _valuable) -> void:
+func on_theft(_intruder, valuable) -> void:
 	thefts += 1
+	if GameState.autotest_survive:
+		valuable.stolen = false  # keep the building worth robbing in survive tests
+		valuable.refresh()
 	score -= 200
 	message("Something was stolen! (%d/%d)" % [thefts, MAX_THEFTS], 3.0)
 	Music.stinger("theft")
@@ -546,8 +704,8 @@ func on_shadow_caught(s) -> void:
 
 
 func _end_of_shift() -> void:
-	if punches < checkpoints.size():
-		_end(false, "6:00 AM. You skipped most of your rounds - you're fired.")
+	if orders_total > 0 and float(punches) / orders_total < 0.6:
+		_end(false, "6:00 AM. You skipped too many patrol orders - you're fired.")
 	else:
 		score += 500 + int((100.0 - player.fear) * 2.0)
 		_end(true, "6:00 AM. The day guard arrives. You made it.")
@@ -566,7 +724,10 @@ func _end(win: bool, reason: String) -> void:
 		"night": GameState.night,
 		"score": maxi(0, score),
 		"punches": punches,
-		"punches_total": checkpoints.size() * 2,
+		"punches_total": orders_total,
+		"orders_missed": orders_missed,
+		"retries": retries,
+		"crew": crew_sent,
 		"scared": scared,
 		"thefts": thefts,
 		"entered": entered,
@@ -575,7 +736,8 @@ func _end(win: bool, reason: String) -> void:
 	}
 	print("Shift ended: ", result)
 	if GameState.autotest:
-		print("AUTOTEST DUTIES: alarm armed=%s cut=%s, doors locked %d/%d, dead wings=%s, jammed clocks=%d" % [
+		print("AUTOTEST DUTIES: windows broken=%d boarded=%d, alarm armed=%s cut=%s, doors locked %d/%d, dead wings=%s, jammed clocks=%d" % [
+			windows_broken(), windows.filter(func(w): return w.pane == WindowPane.Pane.BOARDED).size(),
 			alarm.armed, alarm.cut, doors_locked(), doors.size(), breaker.dead_wings(),
 			checkpoints.filter(func(c): return c.jammed).size()])
 	await get_tree().create_timer(2.5).timeout
@@ -594,6 +756,14 @@ func _autopilot() -> void:
 				best = d
 				target = dev
 	player.auto_move = Vector2.ZERO
+	# Point the flashlight at the nearest thief within reach, if any.
+	player.auto_aim = Vector2.ZERO
+	var near := 380.0
+	for it in intruders + shadows:
+		var dist: float = it.global_position.distance_to(player.global_position)
+		if dist < near:
+			near = dist
+			player.auto_aim = (it.global_position - player.global_position).normalized()
 	if target != null and best > 20.0:
 		var path: PackedVector2Array = level.find_path(player.global_position, target.global_position)
 		if path.size() > 1:

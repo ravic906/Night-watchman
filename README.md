@@ -13,10 +13,13 @@ Besides punching the clocks, the watchman has three more duties, and the thieves
 | Alarm | Panel in the lobby | Arm it (re-wire it if cut) | Cut the wires | Intruder count shows **??**, no break-in chimes |
 | Power | Breaker box in the basement | Reset the breaker | Flip one wing's circuit | That wing's lamps are dark |
 | Doors | The two outside doors | Lock them | Pick the lock; anyone leaving leaves it unlocked | Thieves walk straight in, and more often |
-| Clocks | 5 punch clocks | Punch them | Jam them | Takes 3 s to fix and punch |
+| Windows | Archive, Storage, Basement, Office | Board up a smashed one | Smash it (loud), or pry the boards off | Thieves slip in and out silently |
+| Clocks | 5 punch clocks (hourly orders) | Punch the ordered ones | Jam them | Takes 3 s to fix and punch |
 
 While the **alarm is armed**, the top-right panel shows exactly how many intruders are inside, and a chime plays at every break-in. Lose the alarm and you're guessing again.
 Sabotage takes a thief a few seconds at the device, and you'll hear the work. Catch them in your beam to scare them off for a bonus.
+
+**The night gets worse as it goes.** Thieves arrive more often and more can be inside at once after 2 AM and again after 4 AM, and at 4 AM a crew of 2–3 hits several entrances at once. Thieves go for the entrance farthest from you, and one you scare away from a door or window comes back once, somewhere else.
 
 ## Music
 The score adapts to what is happening:
@@ -29,7 +32,7 @@ The score adapts to what is happening:
 `tools/compose_music.py` composes every track and sound effect with numpy and writes them to `audio/*.ogg`. To change or regenerate the music, run `python3 tools/compose_music.py` (needs numpy and ffmpeg). The mixing logic is in `scripts/music.gd`. You can turn sound on or off from the main menu.
 
 ## How to play
-- **Do your rounds.** Punch all 5 clocks (red blinking lights) once before 2 AM, then again before 6 AM.
+- **Follow your patrol orders.** Every hour the radio names 2–3 clocks (red blinking lights) to punch before the next hour. Finish at least 60% of the night's orders or you're fired.
 - **Stop the thieves.** You hear their footsteps as rings. They head for the valuables. Keep your flashlight on one until the ring fills to scare it off. Three thefts end your shift.
 - **Watch your fear.** Darkness raises it. Your flashlight and the ceiling lamps calm you. At 100% you flee.
 - **Save your battery.** Toggle the light off when you can. Green blinking pickups are spare batteries.
@@ -52,7 +55,7 @@ There are three nights. Each one adds more thieves, a faster battery drain and m
 
 Developer flags (put them after `--` on the command line):
 - `--touch` shows the on-screen controls on desktop.
-- `--autotest [--night=N]` runs a short, self-playing shift and quits. Use it as a smoke test:
+- `--autotest [--night=N] [--survive]` runs a self-playing shift (6x speed) and quits; `--survive` disables losing so the whole night plays out. Use it as a smoke test:
   `godot --headless --path . res://scenes/game.tscn -- --autotest --night=2`
 - `--screenshot=/path/shot.png` saves a frame after 3 seconds and quits.
 - `--start-cell=X,Y` starts the watchman at that map cell.
@@ -86,7 +89,7 @@ scripts/
   player.gd            watchman movement, flashlight cone and battery
   flashlight.gd        light textures generated in code
   intruder.gd          thief AI (pick lock -> sabotage? -> sneak -> steal -> escape / flee)
-  alarm_panel.gd, breaker_box.gd, outside_door.gd   sabotageable duties
+  alarm_panel.gd, breaker_box.gd, outside_door.gd, window.gd   sabotageable duties / entrances
   shadow.gd            the Shadow (moves only when not lit)
   checkpoint.gd, valuable.gd, battery_pickup.gd, wall_lamp.gd
   hud.gd, touch_controls.gd, menu.gd, end_screen.gd

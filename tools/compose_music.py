@@ -451,6 +451,55 @@ def make_lock():
     return normalize(lin_reverb(stereo(out), 0.2, 0.5), 0.75)
 
 
+def make_glass_break():
+    """A window smashing: impact, crash and tinkling shards."""
+    r = np.random.default_rng(51)
+    t = env_t(2.2)
+    out = np.zeros_like(t)
+    th = thump(140, 70, 0.2, click=0.9) * 0.6
+    out[: th.size] += th
+    crash = lin_filter(r.standard_normal(t.size), lo=1500) * np.exp(-t / 0.12)
+    out += crash * 0.9
+    shard_t = env_t(0.12)
+    for i in range(28):  # shards landing
+        at = int(SR * (0.05 + r.exponential(0.35)))
+        if at + shard_t.size >= t.size:
+            continue
+        f = r.uniform(2500, 7500)
+        ping = np.sin(2 * np.pi * f * shard_t) * np.exp(-shard_t / r.uniform(0.01, 0.04))
+        out[at: at + shard_t.size] += ping * r.uniform(0.15, 0.5)
+    return normalize(lin_reverb(stereo(out), 0.3, 1.2), 0.9)
+
+
+def make_radio():
+    """Walkie-talkie: squelch burst, then a double beep."""
+    r = np.random.default_rng(61)
+    t = env_t(0.9)
+    static = lin_filter(r.standard_normal(t.size), lo=600, hi=3500) * (t < 0.25) * 0.45
+    out = static
+    for i, f in enumerate([1400, 1800]):
+        b = beep(f, 0.08, 0.5) * 0.5
+        at = int(SR * (0.32 + i * 0.12))
+        out[at: at + b.size] += b
+    return normalize(lin_reverb(stereo(out), 0.1, 0.3), 0.7)
+
+
+def make_board():
+    """Three hammer knocks on wood."""
+    buf = np.zeros((int(SR * 1.3), 2))
+    for i in range(3):
+        knock = thump(220 - i * 10, 110, 0.15, click=0.8)
+        knock = lin_filter(knock, hi=4000)
+        place(buf, stereo(knock * (0.8 + 0.1 * i)), 0.05 + i * 0.28, wrap=False)
+    return normalize(lin_reverb(buf, 0.25, 0.6), 0.8)
+
+
+def make_pry():
+    """Boards being levered off: a low, strained wooden creak."""
+    out = creak(0.8, lambda u: 18 + 30 * u, resonances=(260, 520, 900), seed=71)
+    return normalize(lin_reverb(stereo(out), 0.3, 0.8), 0.75)
+
+
 # ---------------------------------------------------------------- output
 
 def write_ogg(path, x, quality=4):
@@ -525,6 +574,10 @@ def main():
         "breaker": make_breaker(),
         "lockpick": make_lockpick(),
         "lock": make_lock(),
+        "glass_break": make_glass_break(),
+        "radio": make_radio(),
+        "board": make_board(),
+        "pry": make_pry(),
     }
     for i in range(4):
         stingers[f"step_{i + 1}"] = make_step(100 + i)

@@ -9,11 +9,12 @@ extends Node2D
 ##   E  outside door (intruders come and go here)
 ##   S  shadow spawn
 ##   A  alarm panel       B  breaker box
+##   W  window in an outer wall (thieves can smash in)
 
 const TILE := 48
 
 const MAP := [
-	"########################################",
+	"#####W#########################W########",
 	"#..........#.........#.................#",
 	"#....V.....#....V....#......V.....V....#",
 	"#..........#.........#.................#",
@@ -32,7 +33,7 @@ const MAP := [
 	"#...........#......L......#.......5....#",
 	"#..L........#.............#..L.........#",
 	"#.....S.....#.............#........S...#",
-	"########################################",
+	"#####W###########################W######",
 ]
 
 const CHECKPOINT_NAMES := ["Archive", "Gallery", "Storage", "Basement", "Office"]
@@ -58,6 +59,7 @@ var valuables: Array[Vector2] = []
 var lamps: Array[Vector2] = []
 var entries: Array[Vector2] = []
 var alarm_pos := Vector2.ZERO
+var windows: Array = []   # [{ "name": String, "pos": Vector2 }]
 var breaker_pos := Vector2.ZERO
 var shadow_spawns: Array[Vector2] = []
 var floor_cells: Array[Vector2i] = []
@@ -68,6 +70,7 @@ var wall_node: Node2D
 
 var _walls := {}
 var _doors := {}
+var _windows := {}
 ## Interior doorways (one-tile gaps in a wall) -> seconds since last swing.
 var _doorways := {}
 var _floor_seed := []
@@ -103,6 +106,12 @@ func build() -> void:
 					lamps.append(pos)
 				"S":
 					shadow_spawns.append(pos)
+				"W":
+					_doors[cell] = true
+					_windows[cell] = true
+					var top := y < height / 2
+					var left := x < width / 2
+					windows.append({"pos": pos, "name": ("Archive" if left else "Storage") if top else ("Basement" if left else "Office")})
 				"A":
 					alarm_pos = pos
 				"B":
@@ -298,6 +307,8 @@ func _draw_walls() -> void:
 		if not _walls.has(cell + Vector2i.RIGHT) and cell.x + 1 < width:
 			wall_node.draw_line(Vector2(r.end.x, r.position.y), r.end, edge, 2.0)
 	for cell in _doors:
+		if _windows.has(cell):
+			continue
 		var r := Rect2(cell.x * TILE + 6, cell.y * TILE + 2, TILE - 12, TILE - 4)
 		wall_node.draw_rect(r, Color(0.28, 0.17, 0.1))
 		wall_node.draw_rect(r, Color(0.45, 0.3, 0.18), false, 2.0)

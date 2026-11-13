@@ -17,6 +17,8 @@ const NIGHTS := {
 		"battery_drain": 1.1, "fear_dark": 1.6,
 		"shadows": 0, "shadow_speed": 0.0, "event_mult": 1.0,
 		"sabotage_chance": 0.35, "lockpick_time": 8.0,
+		"orders_per_hour": 2, "late_interval_mult": 0.55, "crew_size": 2,
+		"window_break_time": 1.5, "pry_time": 6.0,
 	},
 	2: {
 		"title": "Night 2 - Something Else Is Here",
@@ -25,6 +27,8 @@ const NIGHTS := {
 		"battery_drain": 1.4, "fear_dark": 2.2,
 		"shadows": 1, "shadow_speed": 55.0, "event_mult": 1.3,
 		"sabotage_chance": 0.5, "lockpick_time": 6.5,
+		"orders_per_hour": 3, "late_interval_mult": 0.5, "crew_size": 3,
+		"window_break_time": 1.5, "pry_time": 6.0,
 	},
 	3: {
 		"title": "Night 3 - The Long Dark",
@@ -33,6 +37,8 @@ const NIGHTS := {
 		"battery_drain": 1.7, "fear_dark": 2.8,
 		"shadows": 2, "shadow_speed": 70.0, "event_mult": 1.6,
 		"sabotage_chance": 0.6, "lockpick_time": 5.0,
+		"orders_per_hour": 3, "late_interval_mult": 0.45, "crew_size": 3,
+		"window_break_time": 1.2, "pry_time": 5.0,
 	},
 }
 
@@ -44,6 +50,8 @@ var last_result := {}
 
 ## Run with `-- --autotest` for a short, self-playing shift (used for CI/smoke tests).
 var autotest := false
+## With --autotest: ignore fear/theft losses so the whole night plays out.
+var autotest_survive := false
 ## Run with `-- --touch` to show the on-screen controls on desktop.
 var force_touch := false
 ## Dev helper: `-- --start-cell=X,Y` starts the watchman at that map cell.
@@ -53,6 +61,7 @@ var start_cell := Vector2i(-1, -1)
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	autotest = args.has("--autotest")
+	autotest_survive = args.has("--survive")
 	force_touch = args.has("--touch")
 	for a in args:
 		if a.begins_with("--night="):

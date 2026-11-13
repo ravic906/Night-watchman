@@ -36,7 +36,7 @@ func _ready() -> void:
 	var stats := Label.new()
 	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stats.add_theme_font_size_override("font_size", 18)
-	stats.text = "Night %d   -   ended at %s\nClocks punched: %d / %d\nIntruders: %d got in, %d scared off\nSabotage attempts that worked: %d\nItems stolen: %d\nScore: %d" % [
+	stats.text = "Night %d   -   ended at %s\nPatrol orders done: %d / %d\nIntruders: %d got in, %d scared off\nSabotage attempts that worked: %d\nItems stolen: %d\nScore: %d" % [
 		night, r.get("time", "?"), r.get("punches", 0), r.get("punches_total", 10),
 		r.get("entered", 0), r.get("scared", 0), r.get("sabotages", 0), r.get("thefts", 0), r.get("score", 0)]
 	box.add_child(stats)

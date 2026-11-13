@@ -1,5 +1,5 @@
 extends Node2D
-## A thief. Gets in through an outside door (picking the lock if it is locked),
+## A thief. Gets in through an entrance (picking a lock, smashing or prying a window),
 ## may sabotage one of the watchman's duties, then sneaks to a valuable,
 ## grabs it and runs for the nearest door.
 ## Keep your flashlight on them long enough and they bolt empty-handed.
@@ -14,7 +14,10 @@ var speed := 70.0
 var expose_time := 1.5
 var sabotage_chance := 0.4
 var lockpick_time := 6.0
-var door = null            # the outside door this thief came in by
+var door = null            # the entrance (door or window) this thief came in by
+## A thief scared away from an entrance comes back once, somewhere else.
+var retries_left := 1
+var _pick_total := 1.0
 
 var state := State.SNEAK
 var target = null          # valuable
@@ -38,9 +41,10 @@ var _gone := false
 func _ready() -> void:
 	glow.draw.connect(_draw_glow)
 	_step_timer = randf_range(1.0, 3.0)
-	if door != null and door.locked:
+	if door != null and not door.is_open():
 		state = State.PICK
-		_work_left = lockpick_time
+		_work_left = door.entry_work_time(game.cfg)
+		_pick_total = _work_left
 		door.picker = self
 		door.pick_progress = 0.0
 	else:
@@ -101,11 +105,13 @@ func _run_for_exit(next_state: State) -> void:
 	state = next_state
 	var best := global_position
 	var best_d := INF
-	for e in game.level.entries:
-		var d: float = global_position.distance_to(e)
+	for e in game.entrances:
+		if not e.passable_exit():
+			continue
+		var d: float = global_position.distance_to(e.global_position)
 		if d < best_d:
 			best_d = d
-			best = e
+			best = e.global_position
 	_path = game.level.find_path(global_position, best)
 	_path_i = 0
 
@@ -130,12 +136,13 @@ func _follow(delta: float, spd: float) -> bool:
 	return false
 
 
-## Periodic sound while working on a lock or a device.
-func _work_noise(delta: float, volume_db: float) -> void:
+## Periodic sound while working on a lock, a window or a device.
+func _work_noise(delta: float, volume_db: float, sound := "lockpick") -> void:
 	_work_sound -= delta
 	if _work_sound <= 0.0:
 		_work_sound = randf_range(0.7, 1.1)
-		Music.sfx_at("lockpick", global_position, volume_db, randf_range(0.9, 1.1), 900.0)
+		if sound != "":
+			Music.sfx_at(sound, global_position, volume_db, randf_range(0.9, 1.1), 900.0)
 		game.add_noise(global_position, Color(1.0, 0.6, 0.3))
 
 
@@ -153,15 +160,14 @@ func _physics_process(delta: float) -> void:
 			if exposure >= expose_time:
 				door.picker = null
 				door.refresh()
-				game.on_intruder_scared(self, false)
+				game.on_entry_foiled(self, door)
 				_leave(false)
 				return
 			_work_left -= delta
-			door.pick_progress = clampf(1.0 - _work_left / lockpick_time, 0.0, 1.0)
-			_work_noise(delta, -3.0)
+			door.pick_progress = clampf(1.0 - _work_left / _pick_total, 0.0, 1.0)
+			_work_noise(delta, -3.0, door.work_sound())
 			if _work_left <= 0.0:
-				door.locked = false
-				game.on_lock_picked(self, door)
+				door.force_open(game)
 				_enter()
 		State.GO_SABOTAGE:
 			if exposure >= expose_time:

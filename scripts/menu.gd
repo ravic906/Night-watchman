@@ -64,12 +64,13 @@ func _ready() -> void:
 	_help.custom_minimum_size = Vector2(520, 0)
 	_help.add_theme_font_size_override("font_size", 15)
 	_help.add_theme_color_override("font_color", Color(0.85, 0.85, 0.9))
-	_help.text = """Your shift runs 10 PM to 6 AM. Punch all 5 clocks (red lights) once before 2 AM, then again before 6 AM.
+	_help.text = """Your shift runs 10 PM to 6 AM. Every hour the radio names clocks to punch (red lights) before the next hour - do at least 60% of the night's orders.
+Lock the doors, arm the alarm, keep the power on and board up smashed windows. Thieves will undo it all, and more of them come as dawn nears.
 Thieves (you hear their footsteps as rings) go for the valuables. Hold your flashlight on one to scare it off. Three thefts and you are done.
 Darkness raises your FEAR. Lamps and your flashlight calm you. Batteries (green blinks) recharge the light.
 From Night 2 something else walks the halls. It cannot move while it is in your beam.
 
-Keyboard: WASD/arrows move, mouse aims, Shift runs, F/Space/right-click toggles the light, E punches.
+Keyboard: WASD/arrows move, mouse aims, Shift runs, F/Space/right-click toggles the light, E uses (punch, lock, arm, reset, board).
 Touch: left side is a joystick, buttons on the right."""
 	box.add_child(_help)
 

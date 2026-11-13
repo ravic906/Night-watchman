@@ -1,9 +1,12 @@
 extends Node2D
-## A punch clock on the patrol route. Hold "interact" next to it to punch in.
+## A punch clock on the patrol route. Each hour the radio orders a few clocks
+## to be punched; hold "interact" next to an ordered clock to punch in.
 ## Thieves can jam it; a jammed clock takes longer (fix, then punch).
 
 var cp_name := ""
 var done := false
+## On this hour's patrol orders?
+var ordered := false
 var jammed := false
 var progress := 0.0
 var interact_range := 56.0
@@ -17,7 +20,8 @@ func _ready() -> void:
 	glow.position = global_position
 
 
-func reset_round() -> void:
+func set_ordered(value: bool) -> void:
+	ordered = value
 	done = false
 	progress = 0.0
 
@@ -25,7 +29,7 @@ func reset_round() -> void:
 # --- guard interaction -------------------------------------------------------
 
 func needs_action() -> bool:
-	return not done
+	return ordered and not done
 
 
 func action_label() -> String:
@@ -84,10 +88,12 @@ func _draw_glow() -> void:
 		col = Color(1.0, 0.65, 0.1, 0.5 + 0.5 * float(fmod(_t * 5.0, 1.0) > 0.5))
 	elif done:
 		col = Color(0.3, 1.0, 0.4, 0.9)
+	elif not ordered:
+		col = Color(0.45, 0.45, 0.5, 0.45)
 	else:
 		col = Color(1.0, 0.25, 0.2, 0.5 + 0.5 * pulse)
 	glow.draw_circle(Vector2(0, 10), 4, col)
-	if not done:
+	if ordered and not done:
 		glow.draw_arc(Vector2(0, 10), 9 + pulse * 3, 0, TAU, 20, Color(col, 0.25), 1.5)
 	if progress > 0.0 and not done:
 		glow.draw_arc(Vector2.ZERO, 26, -PI / 2, -PI / 2 + TAU * progress, 32,
