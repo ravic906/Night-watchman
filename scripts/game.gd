@@ -91,6 +91,8 @@ var _event_timer := 18.0
 var _shadow_timer := 35.0
 var _noises: Array = []   # [{ "pos": Vector2, "age": float, "color": Color }]
 var _messages: Array = []
+## Full message history for the Log tab: [{ "time": String, "text": String }].
+var log_entries: Array = []
 var _retry_queue: Array = []   # [{ "time": float, "avoid": entrance, "retries": int }]
 var _last_cell := Vector2i(-1, -1)
 var _door_cooldown := 0.0
@@ -224,8 +226,8 @@ func _ready() -> void:
 
 	Music.play_game()
 	message("%s - %s" % [location.title, GameState.difficulty_name()], 4.0)
-	message(location.duty_hint, 6.0)
-	message("Every hour the radio tells you which clocks to punch.", 6.0)
+	message(location.duty_hint, 6.0, false)
+	message("Every hour the radio tells you which clocks to punch.", 6.0, false)
 
 
 ## Creates an entity in the world plus its partner node in the glow layer.
@@ -246,12 +248,21 @@ func add_score(n: int) -> void:
 	score = maxi(0, score + n)
 
 
-func message(text: String, seconds := 3.0) -> void:
+## Every message goes to the log (Objectives panel > Log tab). With `toast`,
+## it also pops up as the single line in the middle of the screen.
+func message(text: String, seconds := 3.0, toast := true) -> void:
 	if GameState.autotest:
 		print("MSG ", clock_text(), "  ", text)
-	_messages.append({"text": text, "time": seconds})
-	if _messages.size() > 3:
-		_messages.pop_front()
+	log_entries.append({"time": clock_text(), "text": text})
+	if log_entries.size() > 40:
+		log_entries.pop_front()
+	if toast:
+		_messages = [{"text": text, "time": seconds}]
+
+
+## Pop-up only (the full text is logged separately).
+func toast(text: String, seconds := 3.0) -> void:
+	_messages = [{"text": text, "time": seconds}]
 
 
 func messages() -> Array:
@@ -393,7 +404,8 @@ func _update_rounds() -> void:
 	var text := "Radio, %s: punch %s." % [hour_label(window_start), _names(picks)]
 	if has_next:
 		text += " Next: %s." % _names(_next_picks)
-	message(text, 5.0)
+	message(text, 5.0, false)
+	toast("Radio: punch %s" % _names(picks), 4.0)
 	Music.stinger("radio", -4.0)
 
 
@@ -1155,7 +1167,7 @@ func _snapshot(t: float) -> void:
 		"intruders": intruders.map(func(it): return {"cell": _cell_of(it), "state": Intruder.State.keys()[it.state], "inside": it.inside, "lit": it.lit}),
 		"shadows": shadows.map(func(sh): return {"cell": _cell_of(sh), "lit": sh.lit}),
 		"batteries": batteries.map(func(b): return _cell_of(b)),
-		"messages": _messages.map(func(m): return m["text"]),
+		"messages": log_entries.slice(-6).map(func(m): return m["text"]),
 	}
 	var dir := GameState.out_dir if GameState.out_dir != "" else "user://harness"
 	DirAccess.make_dir_recursive_absolute(dir)

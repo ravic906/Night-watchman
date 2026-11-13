@@ -47,6 +47,8 @@ var location := "museum"
 ## Best score per "location:difficulty".
 var best_scores := {}
 var sound_enabled := true
+## The objectives panel opens by itself on the first shift of each session.
+var seen_objectives := false
 var last_result := {}
 
 ## Run with `-- --autotest` for a short, self-playing shift (used for CI/smoke tests).
@@ -223,6 +225,7 @@ func _setup_input() -> void:
 	_add_keys("flashlight", [KEY_F, KEY_SPACE])
 	_add_keys("interact", [KEY_E, KEY_ENTER])
 	_add_keys("run", [KEY_SHIFT])
+	_add_keys("objectives", [KEY_TAB, KEY_O])
 	var click := InputEventMouseButton.new()
 	click.button_index = MOUSE_BUTTON_RIGHT
 	InputMap.action_add_event("flashlight", click)

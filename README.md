@@ -44,6 +44,8 @@ The score adapts to what is happening:
 `tools/compose_music.py` composes every track and sound effect with numpy and writes them to `audio/*.ogg`. To change or regenerate the music, run `python3 tools/compose_music.py` (needs numpy and ffmpeg). The mixing logic is in `scripts/music.gd`. You can turn sound on or off from the main menu.
 
 ## How to play
+The top-right **OBJECTIVES** box always shows your 3 most urgent jobs. Open it (Tab, or tap it) for the full, paused panel: **Objectives** (patrol orders, duties, tips), **Status** (intruders, thefts, score, lose conditions) and **Log** (every message so far). On your first shift it opens by itself.
+
 - **Follow your patrol orders.** Every hour the radio names 2–3 clocks (red blinking lights) to punch before the next hour. Finish at least 60% of the night's orders or you're fired.
 - **Stop the thieves.** You hear their footsteps as rings. They head for the valuables. Keep your flashlight on one until the ring fills to scare it off. Three thefts end your shift.
 - **Watch your fear.** Darkness raises it. Your flashlight and the ceiling lamps calm you. At 100% you flee.
@@ -57,6 +59,7 @@ The score adapts to what is happening:
 | Run        | Shift                       | RUN                      |
 | Flashlight | F / Space / right click     | LIGHT                    |
 | Use (punch, lock, arm, reset) | Hold E          | Hold USE                 |
+| Objectives panel (pauses) | Tab or O; Left/Right switch tabs; Esc closes | Tap the OBJECTIVES box; tap outside to close |
 
 Pick a location and a difficulty in the menu. Your choice and best scores are saved.
 

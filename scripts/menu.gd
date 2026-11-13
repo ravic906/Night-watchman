@@ -117,7 +117,7 @@ Thieves (you hear their footsteps as rings) go for the valuables. Hold your flas
 Darkness raises your FEAR. Lamps and your flashlight calm you. Batteries (green blinks) recharge the light.
 On Normal and Hard something else walks the halls. It cannot move while it is in your beam.
 
-Keyboard: WASD/arrows move, mouse aims, Shift runs, F/Space/right-click toggles the light, E uses (punch, lock, arm, reset, board).
+Keyboard: WASD/arrows move, mouse aims, Shift runs, F/Space/right-click toggles the light, E uses (punch, lock, arm, reset, board), Tab opens the Objectives panel.
 Touch: left side is a joystick, buttons on the right."""
 	box.add_child(_help)
 
