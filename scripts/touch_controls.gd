@@ -18,6 +18,29 @@ var _buttons := [
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Keep hearing finger lifts while paused, so nothing stays held.
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+## Lets go of every action this control is holding.
+func release_all() -> void:
+	_joy_index = -1
+	_joy_vec = Vector2.ZERO
+	_apply_joystick()
+	for b in _buttons:
+		if b["index"] != -1:
+			b["index"] = -1
+			Input.action_release(b["action"])
+	queue_redraw()
+
+
+func _exit_tree() -> void:
+	release_all()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		release_all()
 
 
 func _btn_pos(b: Dictionary) -> Vector2:
@@ -33,7 +56,9 @@ func _default_joy_center() -> Vector2:
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
-		if touch.pressed:
+		if touch.pressed and get_tree().paused:
+			pass   # taps on the pause panel never start movement or actions
+		elif touch.pressed:
 			for b in _buttons:
 				if touch.position.distance_to(_btn_pos(b)) < b["r"] * 1.25:
 					b["index"] = touch.index

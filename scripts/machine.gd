@@ -61,8 +61,8 @@ func complete(g) -> void:
 
 # --- thief sabotage ----------------------------------------------------------
 
-func can_sabotage() -> bool:
-	return not running and saboteur == null
+func can_sabotage(by = null) -> bool:
+	return not running and (saboteur == null or saboteur == by)
 
 
 func sabotage_time() -> float:

@@ -11,7 +11,15 @@ const MENU_SCENE := "res://scenes/menu.tscn"
 const GAME_SCENE := "res://scenes/game.tscn"
 const END_SCENE := "res://scenes/end_screen.tscn"
 
-## Settings for each difficulty (1 = Easy, 2 = Normal, 3 = Hard).
+## Settings shared by every difficulty (balance chosen from the data sweep:
+## hourly radio checks, slower loot carriers, the alarm tracks escapes, a
+## Shadow touch costs time and score, 4 thefts allowed).
+const SHARED := {
+	"radio_hours": 1, "escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
+}
+
+## Settings for each difficulty (1 = Easy, 2 = Normal, 3 = Hard); these
+## override SHARED.
 const DIFFICULTY := {
 	1: {
 		"intruder_max": 2, "intruder_interval": 35.0, "first_intruder": 20.0,
@@ -19,11 +27,8 @@ const DIFFICULTY := {
 		"battery_drain": 0.8, "fear_dark": 1.6,
 		"shadows": 0, "shadow_speed": 0.0, "event_mult": 1.0,
 		"sabotage_chance": 0.35, "lockpick_time": 8.0,
-		"radio_hours": 1, "rooms_per_check": 1, "late_interval_mult": 0.55, "crew_size": 2,
+		"rooms_per_check": 1, "late_interval_mult": 0.55, "crew_size": 2,
 		"window_break_time": 1.5, "pry_time": 6.0,
-		# Balance chosen from the data sweep: slower loot carriers, alarm tracks
-		# escapes, a Shadow touch costs time and score, 4 thefts allowed.
-		"escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
 	},
 	2: {
 		"intruder_max": 3, "intruder_interval": 28.0, "first_intruder": 15.0,
@@ -31,11 +36,8 @@ const DIFFICULTY := {
 		"battery_drain": 1.0, "fear_dark": 2.2,
 		"shadows": 1, "shadow_speed": 55.0, "event_mult": 1.3,
 		"sabotage_chance": 0.5, "lockpick_time": 6.5,
-		"radio_hours": 1, "rooms_per_check": 2, "late_interval_mult": 0.5, "crew_size": 3,
+		"rooms_per_check": 2, "late_interval_mult": 0.5, "crew_size": 3,
 		"window_break_time": 1.5, "pry_time": 6.0,
-		# Balance chosen from the data sweep: slower loot carriers, alarm tracks
-		# escapes, a Shadow touch costs time and score, 4 thefts allowed.
-		"escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
 	},
 	3: {
 		"intruder_max": 4, "intruder_interval": 22.0, "first_intruder": 10.0,
@@ -43,11 +45,8 @@ const DIFFICULTY := {
 		"battery_drain": 1.3, "fear_dark": 2.8,
 		"shadows": 2, "shadow_speed": 70.0, "event_mult": 1.6,
 		"sabotage_chance": 0.6, "lockpick_time": 5.0,
-		"radio_hours": 1, "rooms_per_check": 3, "late_interval_mult": 0.45, "crew_size": 3,
+		"rooms_per_check": 3, "late_interval_mult": 0.45, "crew_size": 3,
 		"window_break_time": 1.2, "pry_time": 5.0,
-		# Balance chosen from the data sweep: slower loot carriers, alarm tracks
-		# escapes, a Shadow touch costs time and score, 4 thefts allowed.
-		"escape_speed": 0.85, "escape_warning": 1, "touch_cost": 1, "max_thefts": 4,
 	},
 }
 
@@ -187,7 +186,8 @@ func automated() -> bool:
 
 
 func settings() -> Dictionary:
-	var s: Dictionary = DIFFICULTY[difficulty].duplicate()
+	var s: Dictionary = SHARED.duplicate()
+	s.merge(DIFFICULTY[difficulty], true)
 	s.merge(overrides, true)
 	return s
 

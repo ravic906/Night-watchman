@@ -91,11 +91,13 @@ func _pick_target() -> void:
 		_run_for_exit(State.FLEE)
 		return
 	target = options.pick_random()
-	if target.gate != null and target.gate.closed:
+	var route: PackedVector2Array = game.level.find_path(global_position, target.global_position + Vector2(0, 26))
+	if route.is_empty() and target.gate != null and target.gate.closed:
+		# Only force the shutter if it actually stands between us and the loot.
 		_go_force(target.gate, State.SNEAK)
 		return
 	state = State.SNEAK
-	_path = game.level.find_path(global_position, target.global_position + Vector2(0, 26))
+	_path = route
 	_path_i = 0
 
 
@@ -116,6 +118,7 @@ func _go_force(sh, resume: State) -> void:
 	_path_i = 0
 	if best.is_empty():
 		gate = null
+		_drop_loot()
 		_run_for_exit(State.FLEE)
 
 
@@ -139,6 +142,10 @@ func _resume_after_gate() -> void:
 			_pick_target()
 
 
+func _carrying() -> bool:
+	return target != null and target.carrier == self
+
+
 func _drop_loot() -> void:
 	if target != null and target.carrier == self:
 		target.carrier = null
@@ -151,10 +158,7 @@ func _drop_loot() -> void:
 func _device_still_valid() -> bool:
 	if device == null:
 		return false
-	device.saboteur = null
-	var ok: bool = device.can_sabotage()
-	device.saboteur = self
-	return ok
+	return device.can_sabotage(self)
 
 
 func _release_device() -> void:
@@ -180,6 +184,10 @@ func _run_for_exit(next_state: State) -> void:
 
 
 func _follow(delta: float, spd: float) -> bool:
+	if _path.is_empty():
+		# No route at all (e.g. a shutter closed us in): never treat as arrived.
+		_blocked_at = global_position
+		return false
 	if _path_i >= _path.size():
 		return true
 	# A shutter came down in front of us.
@@ -224,18 +232,24 @@ func _physics_process(delta: float) -> void:
 
 	match state:
 		State.PICK:
-			if exposure >= expose_time:
+			if door.is_open():
+				# Another thief left it open from inside: no need to pick it.
+				door.picker = null
+				door.refresh()
+				_enter()
+			elif exposure >= expose_time:
 				door.picker = null
 				door.refresh()
 				game.on_entry_foiled(self, door)
 				_leave(false)
 				return
-			_work_left -= delta
-			door.pick_progress = clampf(1.0 - _work_left / _pick_total, 0.0, 1.0)
-			_work_noise(delta, -3.0, door.work_sound())
-			if _work_left <= 0.0:
-				door.force_open(game)
-				_enter()
+			else:
+				_work_left -= delta
+				door.pick_progress = clampf(1.0 - _work_left / _pick_total, 0.0, 1.0)
+				_work_noise(delta, -3.0, door.work_sound())
+				if _work_left <= 0.0:
+					door.force_open(game)
+					_enter()
 		State.GO_SABOTAGE:
 			if exposure >= expose_time:
 				_release_device()
@@ -304,9 +318,10 @@ func _physics_process(delta: float) -> void:
 				_leave()
 		State.GO_FORCE:
 			if exposure >= expose_time:
+				var had_loot := _carrying()
 				_drop_loot()
 				gate = null
-				game.on_intruder_scared(self, false)
+				game.on_intruder_scared(self, had_loot)
 				_run_for_exit(State.FLEE)
 			elif not gate.closed:
 				_resume_after_gate()
@@ -318,12 +333,16 @@ func _physics_process(delta: float) -> void:
 			if gate.picker == null:
 				gate.picker = self
 			if exposure >= expose_time * 0.8:
+				var had_loot := _carrying()
 				_drop_loot()
 				if gate.picker == self:
 					gate.picker = null
 					gate.refresh()
 				gate = null
-				game.on_saboteur_caught(self)
+				if had_loot:
+					game.on_intruder_scared(self, true)
+				else:
+					game.on_saboteur_caught(self)
 				_run_for_exit(State.FLEE)
 			elif not gate.closed:
 				_resume_after_gate()
@@ -342,8 +361,22 @@ func _physics_process(delta: float) -> void:
 		var at := _blocked_at
 		_blocked_at = Vector2.INF
 		var sh = game.shutter_at(at)
-		if sh != null and state in [State.SNEAK, State.ESCAPE, State.FLEE, State.GO_SABOTAGE]:
-			_go_force(sh, state)
+		if sh == null:
+			sh = game.nearest_reachable_closed_shutter(global_position)
+		var resume: State = _resume if state == State.GO_FORCE else state
+		if sh != null and state in [State.SNEAK, State.ESCAPE, State.FLEE, State.GO_SABOTAGE, State.GO_FORCE]:
+			_go_force(sh, resume)
+		elif state in [State.ESCAPE, State.FLEE, State.GO_FORCE]:
+			# Truly walled in: give up quietly (dropping anything carried).
+			_drop_loot()
+			_leave(false)
+			return
+		elif state == State.GO_SABOTAGE:
+			_release_device()
+			_pick_target()
+		elif state == State.SNEAK:
+			target = null
+			_run_for_exit(State.FLEE)
 
 	# Footsteps you can hear (not see) when they are moving nearby.
 	if state not in [State.STEAL, State.PICK, State.SABOTAGE, State.FORCE]:
@@ -362,6 +395,7 @@ func _physics_process(delta: float) -> void:
 func _leave(was_inside := true) -> void:
 	_gone = true
 	_release_device()
+	_drop_loot()
 	if gate != null and gate.picker == self:
 		gate.picker = null
 		gate.refresh()

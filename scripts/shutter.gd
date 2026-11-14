@@ -62,8 +62,8 @@ func hold_time() -> float:
 
 func complete(g) -> void:
 	# Never shut someone (or yourself) inside the shutter itself.
-	if g.player.global_position.distance_to(global_position) < 30.0 \
-			or g.intruders.any(func(it): return it.global_position.distance_to(global_position) < 30.0):
+	if g.player.global_position.distance_to(global_position) < 40.0 \
+			or g.intruders.any(func(it): return it.global_position.distance_to(global_position) < 40.0):
 		g.message("Step clear of the doorway first.", 2.0)
 		return
 	set_closed(true)

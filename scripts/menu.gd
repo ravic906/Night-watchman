@@ -8,6 +8,7 @@ var _diff_buttons := {} # difficulty -> Button
 
 
 var _quit_dialog: ConfirmationDialog
+var _defs := {}   # location id -> map definition (loaded once)
 
 
 func _ready() -> void:
@@ -53,6 +54,7 @@ func _ready() -> void:
 	var loc_group := ButtonGroup.new()
 	for loc_id in GameState.LOCATIONS:
 		var def = GameState.location_def(loc_id)
+		_defs[loc_id] = def
 		var card := Button.new()
 		card.toggle_mode = true
 		card.button_group = loc_group
@@ -135,7 +137,7 @@ Touch: left side is a joystick, buttons on the right."""
 ## Show each location's best score at the chosen difficulty.
 func _refresh_best() -> void:
 	for loc_id in _cards:
-		var def = GameState.location_def(loc_id)
+		var def = _defs[loc_id]
 		var best := GameState.best_score(loc_id, GameState.difficulty)
 		var line := "Best (%s): %d" % [GameState.difficulty_name(), best] if best > 0 else ""
 		_cards[loc_id].text = "%s\n%s%s" % [def.title.to_upper(), def.blurb, "\n" + line if line != "" else ""]

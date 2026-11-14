@@ -228,6 +228,11 @@ func is_cell_solid(pos: Vector2) -> bool:
 	return astar.is_point_solid(world_to_cell(pos))
 
 
+## Door, window or shutter cell: walkable for thieves but not a place for items.
+func is_opening(cell: Vector2i) -> bool:
+	return _doors.has(cell) or _shutter_cells.has(cell)
+
+
 func is_doorway(cell: Vector2i) -> bool:
 	return _doorways.has(cell)
 

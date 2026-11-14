@@ -322,6 +322,8 @@ func _physics_process(delta: float) -> void:
 
 	if GameState.autotest:
 		_autopilot()
+	if GameState.autotest or GameState.harness_active():
+		_watchdog(delta)
 
 	_update_rounds()
 	_update_interaction(delta)
@@ -397,12 +399,7 @@ func _update_rounds() -> void:
 	if window_start == patrol_hour:
 		return
 	if patrol_hour >= 0:
-		_log_window()
-		var missed: Array = checkpoints.filter(func(c): return c.ordered and not c.done)
-		if not missed.is_empty():
-			orders_missed += missed.size()
-			add_score(-(30 * missed.size()))
-			message("Missed: %s" % ", ".join(missed.map(func(c): return c.cp_name)), 3.0)
+		_close_window()
 	var previous: Array = checkpoints.filter(func(c): return c.ordered)
 	patrol_hour = window_start
 	var picks: Array = _next_picks if not _next_picks.is_empty() else _pick_rooms(previous)
@@ -423,6 +420,16 @@ func _update_rounds() -> void:
 
 
 ## Pick this check's rooms, avoiding last check's rooms whenever possible.
+## End of a check window: log it and charge for any orders left undone.
+func _close_window() -> void:
+	_log_window()
+	var missed: Array = checkpoints.filter(func(c): return c.ordered and not c.done)
+	if not missed.is_empty():
+		orders_missed += missed.size()
+		add_score(-(30 * missed.size()))
+		message("Missed: %s" % ", ".join(missed.map(func(c): return c.cp_name)), 3.0)
+
+
 func _pick_rooms(avoid: Array) -> Array:
 	var count: int = mini(mini(int(cfg["rooms_per_check"]), int(location.max_rooms)), checkpoints.size())
 	if GameState.overrides.has("rooms_per_check"):
@@ -565,11 +572,16 @@ func on_alarm_cut(panel) -> void:
 	player.fear = minf(100.0, player.fear + 5.0)
 
 
-func on_power_cut(wing: String, box) -> void:
-	sabotages += 1
+func _power_off_wing(wing: String) -> void:
+	breaker.set_wing(wing, false)
 	for lamp in lamps:
 		if lamp.wing == wing:
 			lamp.set_powered(false)
+
+
+func on_power_cut(wing: String, box) -> void:
+	sabotages += 1
+	_power_off_wing(wing)
 	Music.sfx_at("breaker", box.global_position, 0.0, 0.85, 2400.0)
 	message("A breaker clunks off - the %s wing goes dark." % wing, 3.5)
 	player.fear = minf(100.0, player.fear + 6.0)
@@ -753,16 +765,41 @@ func _spawn_intruder(avoid = null, retries_left := 1, taken: Array = []):
 	var entrance = _choose_entrance(avoid, taken)
 	if entrance == null:
 		return null
-	var it = _spawn(Intruder, entrance.global_position, false)
+	return _make_intruder(entrance.global_position, entrance, retries_left,
+			float(cfg["sabotage_chance"]) + 0.15 * night_progress())
+
+
+## Creates a thief at `pos`. `entrance` is the door/window it uses (null if
+## it is already inside, e.g. an apartment intruder).
+func _make_intruder(pos: Vector2, entrance, retries_left: int, sabotage_chance: float):
+	var it = _spawn(Intruder, pos, false)
 	it.game = self
 	it.door = entrance
 	it.retries_left = retries_left
 	it.speed = cfg["intruder_speed"]
 	it.expose_time = cfg["expose_time"]
-	it.sabotage_chance = float(cfg["sabotage_chance"]) + 0.15 * night_progress()
+	it.sabotage_chance = sabotage_chance
 	intruders.append(it)
 	world.add_child(it)
 	return it
+
+
+## The closest closed shutter a thief at `pos` can walk up to (or null).
+func nearest_reachable_closed_shutter(pos: Vector2):
+	var best = null
+	var best_len := INF
+	for sh in shutters:
+		if not sh.closed:
+			continue
+		for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+			var spot: Vector2 = sh.global_position + d * 48.0
+			if level.is_wall(level.world_to_cell(spot)) or level.is_cell_solid(spot):
+				continue
+			var p: PackedVector2Array = level.find_path(pos, spot)
+			if not p.is_empty() and p.size() < best_len:
+				best_len = p.size()
+				best = sh
+	return best
 
 
 ## 4 AM: a crew hits several entrances at once.
@@ -790,7 +827,7 @@ func _spawn_battery() -> void:
 		for attempt in 12:
 			var p: Vector2 = c.global_position + Vector2(randf_range(-3, 3), randf_range(-3, 3)).round() * 48.0
 			var cell: Vector2i = level.world_to_cell(p)
-			if level.floor_cells.has(cell) and not level.is_cell_solid(p) and p.distance_to(player.global_position) > 150.0 \
+			if level.floor_cells.has(cell) and not level.is_opening(cell) and not level.is_cell_solid(p) and p.distance_to(player.global_position) > 150.0 \
 					and p.distance_to(c.global_position) > 40.0 and not _battery_near(level.cell_to_world(cell)):
 				pos = level.cell_to_world(cell)
 				break
@@ -1004,15 +1041,7 @@ func _update_calls(delta: float) -> void:
 	message("Intercom: %s hears noises. Check it within a minute." % spot.flat, 4.0)
 	if real:
 		# A thief already inside the flat (came over the balcony).
-		var it = _spawn(Intruder, spot.global_position, false)
-		it.game = self
-		it.door = null
-		it.retries_left = 0
-		it.speed = cfg["intruder_speed"]
-		it.expose_time = cfg["expose_time"]
-		it.sabotage_chance = 0.0
-		intruders.append(it)
-		world.add_child(it)
+		_make_intruder(spot.global_position, null, 0, 0.0)
 
 
 func on_call_answered(c) -> void:
@@ -1047,11 +1076,7 @@ func on_machine_stopped(m) -> void:
 
 func on_machine_overheat(m) -> void:
 	var wing: String = level.wing_of(m.global_position)
-	breaker.circuits[wing] = false
-	breaker.refresh()
-	for lamp in lamps:
-		if lamp.wing == wing:
-			lamp.set_powered(false)
+	_power_off_wing(wing)
 	player.fear = minf(100.0, player.fear + 8.0)
 	Music.sfx_at("overheat", m.global_position, 0.0, 1.0, 2600.0)
 	message("%s OVERHEATS - the %s wing loses power!" % [m.machine_name, wing], 4.0)
@@ -1062,7 +1087,7 @@ func machines_running() -> Array:
 
 
 func _end_of_shift() -> void:
-	_log_window()
+	_close_window()
 	if orders_total > 0 and float(punches) / orders_total < 0.6:
 		_end(false, "6:00 AM. You skipped too many patrol orders - you're fired.")
 	else:
@@ -1075,6 +1100,8 @@ func _end(win: bool, reason: String) -> void:
 		return
 	ended = true
 	player.set_physics_process(false)
+	# Thieves, the Shadow and machines stop too, so nothing happens after the end.
+	world.process_mode = Node.PROCESS_MODE_DISABLED
 	Music.end_shift(win)
 	message(reason, 10.0)
 	var result := {
@@ -1160,6 +1187,43 @@ func _autopilot() -> void:
 			player.auto_move = (path[1] - player.global_position).normalized()
 		elif path.size() == 1:
 			player.auto_move = (path[0] - player.global_position).normalized()
+
+
+# --- test watchdog: flags stuck or impossible states in automated runs -------
+
+var _watch_timer := 0.0
+var _watch_last := {}   # intruder instance id -> [position, seconds still]
+
+
+func _watchdog(delta: float) -> void:
+	_watch_timer += delta
+	if _watch_timer < 5.0:
+		return
+	_watch_timer = 0.0
+	if level.is_wall(level.world_to_cell(player.global_position)):
+		print("WATCHDOG player inside wall at ", level.world_to_cell(player.global_position))
+	for sh in shadows:
+		if level.is_wall(level.world_to_cell(sh.global_position)):
+			print("WATCHDOG shadow inside wall at ", level.world_to_cell(sh.global_position))
+	var seen := {}
+	for it in intruders:
+		var id: int = it.get_instance_id()
+		seen[id] = true
+		if level.is_wall(level.world_to_cell(it.global_position)):
+			print("WATCHDOG thief inside wall at ", level.world_to_cell(it.global_position))
+		var busy: bool = it.state in [Intruder.State.PICK, Intruder.State.STEAL, Intruder.State.SABOTAGE, Intruder.State.FORCE]
+		var prev = _watch_last.get(id)
+		if prev != null and not busy and (prev[0] as Vector2).distance_to(it.global_position) < 4.0:
+			prev[1] += 5.0
+			if prev[1] >= 30.0:
+				print("WATCHDOG thief stuck for %ds at %s in state %s" % [prev[1], level.world_to_cell(it.global_position), Intruder.State.keys()[it.state]])
+		else:
+			prev = [it.global_position, 0.0]
+		prev[0] = it.global_position
+		_watch_last[id] = prev
+	for id in _watch_last.keys():
+		if not seen.has(id):
+			_watch_last.erase(id)
 
 
 # --- automated play harness (dev only; see README) ----------------------------

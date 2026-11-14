@@ -43,8 +43,8 @@ func complete(game) -> void:
 
 # --- thief sabotage ----------------------------------------------------------
 
-func can_sabotage() -> bool:
-	return saboteur == null and dead_wings().size() < WINGS.size()
+func can_sabotage(by = null) -> bool:
+	return (saboteur == null or saboteur == by) and dead_wings().size() < WINGS.size()
 
 
 func sabotage_time() -> float:
@@ -58,6 +58,11 @@ func sabotage(game) -> void:
 	var wing: String = live.pick_random()
 	circuits[wing] = false
 	game.on_power_cut(wing, self)
+	refresh()
+
+
+func set_wing(wing: String, on: bool) -> void:
+	circuits[wing] = on
 	refresh()
 
 

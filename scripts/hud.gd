@@ -320,10 +320,13 @@ func _input(event: InputEvent) -> void:
 		return
 	# Taps / clicks (touch screens send touches; desktops send mouse clicks).
 	var pos := Vector2.INF
-	if GameState.use_touch_controls():
-		if event is InputEventScreenTouch and event.pressed:
-			pos = event.position
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+	# Real touches and real mouse clicks both work (touchscreen laptops too);
+	# mouse clicks that are only emulated from a touch are skipped so a tap
+	# is not handled twice.
+	if event is InputEventScreenTouch and event.pressed:
+		pos = event.position
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT \
+			and event.device != InputEvent.DEVICE_ID_EMULATION:
 		pos = event.position
 	if pos == Vector2.INF:
 		return
@@ -360,7 +363,7 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 	for m in game.machines_running():
 		targets.append([m.global_position, m.machine_name, Color(1.0, 0.3, 0.25)])
 	for it in game.intruders:
-		if it.warned:
+		if it.warned and it.is_escaping():
 			targets.append([it.global_position, "THIEF", Color(1.0, 0.25, 0.25)])
 	var centre := size / 2.0
 	var margin := 34.0

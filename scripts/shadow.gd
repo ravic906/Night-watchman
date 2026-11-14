@@ -71,7 +71,8 @@ func _physics_process(delta: float) -> void:
 		if _repath <= 0.0:
 			_repath = 0.5
 			_path = game.level.find_path(global_position, player.global_position)
-			_path_i = 1
+			# A one-point path means we share the player's tile: go straight for them.
+			_path_i = 1 if _path.size() > 1 else 0
 		if _path_i < _path.size():
 			var to := _path[_path_i] - global_position
 			var step := speed * delta

@@ -40,8 +40,8 @@ func complete(game) -> void:
 
 # --- thief sabotage ----------------------------------------------------------
 
-func can_sabotage() -> bool:
-	return armed and saboteur == null
+func can_sabotage(by = null) -> bool:
+	return armed and (saboteur == null or saboteur == by)
 
 
 func sabotage_time() -> float:
