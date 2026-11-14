@@ -15,7 +15,7 @@ func _process(delta: float) -> void:
 	_t += delta
 	# First shift of a session: show the objectives once, paused, so players
 	# can read them in peace (never in automated runs).
-	if not _auto_opened and game != null and game.elapsed > 0.6:
+	if not _auto_opened and game != null and game.elapsed > 3.3:   # after the SHIFT START card
 		_auto_opened = true
 		if not GameState.autotest and not GameState.harness_active() and not GameState.seen_objectives \
 				and not GameState.tutorial:
@@ -422,6 +422,12 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 
 
 func _draw_targets(font: Font, size: Vector2, targets: Array) -> void:
+	# One arrow per spot: a flat that is both a call and an order gets one.
+	var unique: Array = []
+	for t in targets:
+		if not unique.any(func(u): return (u[0] as Vector2).distance_to(t[0]) < 40.0):
+			unique.append(t)
+	targets = unique
 	var xf := get_viewport().get_canvas_transform()
 	var centre := size / 2.0
 	var margin := 34.0

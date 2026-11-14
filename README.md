@@ -59,7 +59,7 @@ The top-right **OBJECTIVES** box always shows your 3 most urgent jobs. Open it (
 | Run        | Shift                       | RUN                      |
 | Flashlight | F / Space / right click     | LIGHT                    |
 | Use (punch, lock, arm, reset) | Hold E          | Hold USE                 |
-| Objectives panel (pauses) | Tab or O; Left/Right switch tabs; Esc closes | Tap the OBJECTIVES box; tap outside to close |
+| Pause / objectives panel | Tab, O or Esc; Left/Right switch tabs | Tap the OBJECTIVES box, or Back; tap outside to close |
 
 Pick a location and a difficulty in the menu. Your choice and best scores are saved.
 
@@ -103,11 +103,47 @@ Install `NightWatchman.apk` on your phone: open it from your downloads and allow
 That APK is **debug-signed**: fine for your own phones and testers, but not accepted by Google Play.
 
 **Android: build it yourself**
-1. In Godot: **Editor > Manage Export Templates > Download and Install**.
-2. Install the Android SDK (build-tools 36.x, platform android-36) and a JDK 17+. Then set their paths in **Editor > Editor Settings > Export > Android**.
-3. **Project > Export**: the "Android" preset is already set up in `export_presets.cfg` (package `com.nightwatchman.game`, arm64 + armv7). Click **Export Project** to get an APK.
-   From the command line: `godot --headless --path . --export-debug "Android" build/NightWatchman.apk`
-4. For Google Play: create your own release keystore, set it in the preset's Keystore > Release fields, enable **Gradle Build**, and export an **AAB** with `--export-release`. Keep that keystore safe: you need it for every update.
+1. In Godot: **Editor > Manage Export Templates > Download and Install**, then **Project > Install Android Build Template** (creates the git-ignored `android/` folder).
+2. Install the Android SDK (build-tools 36.x, platform android-36) and a JDK 17+, and set their paths in **Editor > Editor Settings > Export > Android**.
+3. Two presets are ready in `export_presets.cfg`:
+   - **Android APK** – quick sideload build for testing: `godot --headless --path . --export-debug "Android APK" build/NightWatchman.apk`
+   - **Android** – the Play Store bundle (Gradle, release): `godot --headless --path . --export-release "Android" build/NightWatchman.aab`
+
+## Publishing to Google Play
+Everything in the game is ready for review: it targets Android 16 (API 36), is 64-bit, 16 KB page-aligned, requests **no permissions**, collects **no data**, and downloads at about **28 MB** per phone. The store kit is in `store/`:
+`listing.md` (title, descriptions, and answers for the content rating, target audience and Data safety forms), `icon_512.png`, `feature_1024x500.png` and six 1920×1080 screenshots. The privacy policy is `docs/privacy.html`.
+
+1. **Developer account:** sign up at play.google.com/console (one-off US$25 fee, identity verification).
+2. **Privacy policy URL:** in the repository settings on GitHub, turn on **Pages** for the default branch, folder `/docs`. The URL is `https://<your-user>.github.io/<repo>/privacy.html`. Put your contact email in `docs/privacy.html` and `store/listing.md` first (search for `[your contact email]`).
+3. **Your upload key (keep it safe and backed up):**
+   ```
+   keytool -genkeypair -v -keystore nightwatchman-upload.keystore -alias upload \
+       -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   Then build the signed bundle (the password never goes into the project files):
+   ```
+   export GODOT_ANDROID_KEYSTORE_RELEASE_PATH=/path/to/nightwatchman-upload.keystore
+   export GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload
+   export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD='<your password>'
+   godot --headless --path . --export-release "Android" build/NightWatchman.aab
+   ```
+   When Play Console asks, accept **Play App Signing**: Google keeps the app signing key, and a lost upload key can be reset.
+4. **Create the app** in Play Console (name "Night Watchman", game, free) and fill in the store listing, content rating, target audience, Data safety and privacy policy from `store/listing.md`.
+5. **Test before release:** upload the `.aab` to **Internal testing** first. New personal developer accounts must then run a **Closed test with at least 12 testers for 14 days** before they can apply for production. Read the **pre-launch report** (Google's automatic tests on real phones) and fix anything it flags.
+6. **Release:** apply for production access, then promote the tested build. For updates, raise `version/code` (and `version/name`) in both presets.
+7. The package name `com.nightwatchman.game` becomes permanent with the first upload – change it in both presets before then if you want your own name in it.
+
+## Quality checklist
+What was verified before release (re-run these after changes):
+
+| Area | Check | How |
+|---|---|---|
+| Standards | Pauses on phone calls / home button; Back opens the pause menu (asks before quitting on the title screen); HUD and controls avoid notches | Lifecycle test scene; `--safe-inset=48 --touch` screenshots |
+| Standards | Release bundle: valid, not debuggable, no permissions, 16 KB aligned | `bundletool validate`, `aapt dump badging`, `zipalign -c -P 16` |
+| Bugs | Zero script errors across all locations × difficulties × seeds, normal + survive + random-input "monkey" runs; watchdog for stuck thieves / anyone inside a wall | `--autotest [--survive]`, harness with random inputs |
+| Bugs | No leaks over 10 shifts in one session (nodes, objects, memory flat) | Soak test scene |
+| Performance | ~90 draw calls per frame (was ~1,800); lamp shadows only near the player; 60 FPS cap in shifts, 30 FPS in menus | Harness `perf` in snapshots |
+| Polish | Tutorial, settings (volume, shadows, vibration), stars on the end screen, fades, shake/vibration | Screenshots in `store/` |
 
 **iOS**: requires a Mac with Xcode. Add an iOS preset in **Project > Export**, export the Xcode project, then build it in Xcode.
 
