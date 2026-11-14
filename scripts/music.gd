@@ -98,9 +98,7 @@ func stinger(stinger_name: String, volume_db := 0.0, pitch := 1.0) -> void:
 	p.bus = "SFX"
 	p.volume_db = volume_db
 	p.pitch_scale = pitch
-	add_child(p)
-	p.finished.connect(p.queue_free)
-	p.play()
+	_play_one_shot(p)
 
 
 ## A sound effect from a world position: louder when close to the camera
@@ -117,15 +115,40 @@ func sfx_at(sound_name: String, pos: Vector2, volume_db := 0.0, pitch := 1.0, ma
 	p.max_distance = max_distance
 	p.attenuation = 1.6
 	p.position = pos
-	add_child(p)
-	p.finished.connect(p.queue_free)
-	p.play()
+	_play_one_shot(p)
 
 
 func _resolve(sound_name: String) -> AudioStream:
 	if VARIANTS.has(sound_name):
 		sound_name = "%s_%d" % [sound_name, randi_range(1, VARIANTS[sound_name])]
 	return _stingers.get(sound_name)
+
+
+## Plays a fire-and-forget sound player and makes sure it is cleaned up:
+## normally by "finished"; as a safety net, a timer for the sound's real
+## length (pitch-adjusted) that frees it only once it has stopped playing,
+## re-checking a few times so paused or slowed sounds are never cut short.
+func _play_one_shot(p: Node) -> void:
+	add_child(p)
+	p.finished.connect(p.queue_free)
+	p.play()
+	var length: float = p.stream.get_length() / maxf(p.pitch_scale, 0.05)
+	_check_one_shot(p, length + 0.5, 3)
+
+
+func _check_one_shot(p: Node, wait: float, tries_left: int) -> void:
+	var t := get_tree().create_timer(wait, true, false, true)
+	# The handler checks is_instance_valid, since the player may be gone by then.
+	t.timeout.connect(_on_one_shot_check.bind(p, tries_left))
+
+
+func _on_one_shot_check(p, tries_left: int) -> void:   # untyped: p may already be freed
+	if not is_instance_valid(p) or p.is_queued_for_deletion():
+		return
+	if p.playing and tries_left > 0:
+		_check_one_shot(p, 1.0, tries_left - 1)
+	else:
+		p.queue_free()
 
 
 func set_enabled(on: bool) -> void:
