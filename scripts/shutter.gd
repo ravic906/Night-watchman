@@ -48,11 +48,36 @@ func force_open() -> void:
 
 # --- guard interaction -------------------------------------------------------
 
+## True if the watchman is on the shop side (shut in, or would be if closed).
+func player_inside() -> bool:
+	var frame := Engine.get_physics_frames()
+	if frame == _inside_frame:
+		return _inside_cached
+	_inside_frame = frame
+	_inside_cached = _compute_player_inside()
+	return _inside_cached
+
+
+var _inside_frame := -1
+var _inside_cached := false
+
+
+func _compute_player_inside() -> bool:
+	var lvl = game.level
+	var was_solid: bool = lvl.is_cell_solid(global_position)
+	lvl.set_cell_solid(global_position, true)
+	var cut_off: bool = lvl.find_path(lvl.player_spawn, game.player.global_position).is_empty()
+	lvl.set_cell_solid(global_position, was_solid)
+	return cut_off
+
+
 func needs_action() -> bool:
-	return not closed
+	return not closed or player_inside()
 
 
 func action_label() -> String:
+	if closed:
+		return "raise the %s shutter" % shop
 	return "close the %s shutter" % shop
 
 
@@ -61,6 +86,14 @@ func hold_time() -> float:
 
 
 func complete(g) -> void:
+	if closed:
+		# Only possible from inside: let the watchman out.
+		set_closed(false)
+		g.message("You raise the %s shutter." % shop, 2.0)
+		return
+	if player_inside():
+		g.message("Close it from outside, or you'll lock yourself in.", 2.5)
+		return
 	# Never shut someone (or yourself) inside the shutter itself.
 	if g.player.global_position.distance_to(global_position) < 40.0 \
 			or g.intruders.any(func(it): return it.global_position.distance_to(global_position) < 40.0):

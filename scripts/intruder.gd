@@ -17,6 +17,8 @@ var lockpick_time := 6.0
 var door = null            # the entrance (door or window) this thief came in by
 ## A thief scared away from an entrance comes back once, somewhere else.
 var retries_left := 1
+## Already scared off once (score is only given the first time).
+var was_scared := false
 ## Escape warning (balance option): the alarm is tracking this loot carrier.
 var warned := false
 var exit_name := ""
@@ -167,19 +169,30 @@ func _release_device() -> void:
 	device = null
 
 
+## Head for the nearest exit we can actually walk to (by route length); if
+## none is reachable (shut in), aim for the nearest one so the blocked-route
+## handling makes us force our way out.
 func _run_for_exit(next_state: State) -> void:
 	state = next_state
-	var best := global_position
-	var best_d := INF
+	var best_path := PackedVector2Array()
+	var best_len := INF
+	var fallback = null
+	var fallback_d := INF
 	for e in game.entrances:
 		if not e.passable_exit():
 			continue
 		var d: float = global_position.distance_to(e.global_position)
-		if d < best_d:
-			best_d = d
-			best = e.global_position
+		if d < fallback_d:
+			fallback_d = d
+			fallback = e
+		var p: PackedVector2Array = game.level.find_path(global_position, e.global_position)
+		if not p.is_empty() and p.size() < best_len:
+			best_len = p.size()
+			best_path = p
 			exit_name = e.entrance_label()
-	_path = game.level.find_path(global_position, best)
+	if best_path.is_empty() and fallback != null:
+		exit_name = fallback.entrance_label()
+	_path = best_path
 	_path_i = 0
 
 

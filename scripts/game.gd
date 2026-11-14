@@ -920,9 +920,12 @@ func _update_music() -> void:
 	Music.set_mood(player.fear / 100.0, danger)
 
 
-func on_intruder_scared(_intruder, dropped_loot: bool) -> void:
+func on_intruder_scared(intruder, dropped_loot: bool) -> void:
 	if dropped_loot:
 		loot_recovered += 1
+	elif intruder.was_scared:
+		return   # already running from you: no extra score for scaring it again
+	intruder.was_scared = true
 	scared += 1
 	score += 150 if dropped_loot else 100
 	message("Thief scared off - they dropped the loot!" if dropped_loot else "Thief scared off!", 2.5)
@@ -1211,7 +1214,8 @@ func _watchdog(delta: float) -> void:
 		seen[id] = true
 		if level.is_wall(level.world_to_cell(it.global_position)):
 			print("WATCHDOG thief inside wall at ", level.world_to_cell(it.global_position))
-		var busy: bool = it.state in [Intruder.State.PICK, Intruder.State.STEAL, Intruder.State.SABOTAGE, Intruder.State.FORCE]
+		var busy: bool = it.state in [Intruder.State.PICK, Intruder.State.STEAL, Intruder.State.SABOTAGE, Intruder.State.FORCE] \
+				or it.exposure > 0.0   # cornered and held in the beam is fine
 		var prev = _watch_last.get(id)
 		if prev != null and not busy and (prev[0] as Vector2).distance_to(it.global_position) < 4.0:
 			prev[1] += 5.0
