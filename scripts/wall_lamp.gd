@@ -22,7 +22,7 @@ func _ready() -> void:
 	light.texture_scale = RADIUS / 128.0
 	light.color = tint
 	light.energy = 0.9
-	light.shadow_enabled = true
+	light.shadow_enabled = not GameState.graphics_low
 	add_child(light)
 	glow.draw.connect(_draw_glow)
 	glow.position = global_position

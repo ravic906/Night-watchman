@@ -55,6 +55,16 @@ var location := "museum"
 ## Best score per "location:difficulty".
 var best_scores := {}
 var sound_enabled := true
+## Settings screen.
+var music_volume := 0.8
+var sfx_volume := 0.9
+## Low graphics: no lamp shadows (much cheaper on budget phones).
+var graphics_low := false
+var vibration := true
+## Finished (or skipped) the guided first shift.
+var tutorial_done := false
+## A guided tutorial shift is running.
+var tutorial := false
 ## The objectives panel opens by itself on the first shift of each session.
 var seen_objectives := false
 var last_result := {}
@@ -127,6 +137,8 @@ func _ready() -> void:
 			fast = true
 		elif a.begins_with("--safe-inset="):
 			debug_inset = float(a.get_slice("=", 1))
+		elif a == "--tutorial":
+			tutorial = true
 		elif a == "--log-windows":
 			log_windows = true
 		elif a.begins_with("--screenshot="):
@@ -181,6 +193,28 @@ func safe_insets() -> Dictionary:
 	return out
 
 
+## Fades a screen in from black (call from a scene's _ready).
+func fade_in(scene: Node, seconds := 0.45) -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	layer.process_mode = Node.PROCESS_MODE_ALWAYS
+	var rect := ColorRect.new()
+	rect.color = Color.BLACK
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(rect)
+	scene.add_child(layer)
+	var tw := scene.create_tween()
+	tw.tween_property(rect, "modulate:a", 0.0, seconds)
+	tw.tween_callback(layer.queue_free)
+
+
+## Short haptic buzz on phones (if enabled in Settings).
+func vibrate(ms: int) -> void:
+	if vibration and OS.has_feature("mobile") and not automated():
+		Input.vibrate_handheld(ms)
+
+
 func automated() -> bool:
 	return autotest or harness_active()
 
@@ -188,6 +222,10 @@ func automated() -> bool:
 func settings() -> Dictionary:
 	var s: Dictionary = SHARED.duplicate()
 	s.merge(DIFFICULTY[difficulty], true)
+	if tutorial:
+		# Calm and safe: no surprise thieves, no Shadow, no fear, slow drain.
+		s.merge({"shadows": 0, "fear_dark": 0.0, "battery_drain": 0.4, "first_intruder": 99999.0,
+				"intruder_interval": 99999.0, "expose_time": 1.0, "intruder_speed": 55.0}, true)
 	s.merge(overrides, true)
 	return s
 
@@ -214,7 +252,13 @@ func use_touch_controls() -> bool:
 	return force_touch or DisplayServer.is_touchscreen_available()
 
 
+func start_tutorial() -> void:
+	tutorial = true
+	get_tree().change_scene_to_file(GAME_SCENE)
+
+
 func start_shift(loc_id := "", diff := 0) -> void:
+	tutorial = false
 	if loc_id != "":
 		location = loc_id
 	if diff > 0:
@@ -226,9 +270,13 @@ func start_shift(loc_id := "", diff := 0) -> void:
 func finish_night(result: Dictionary) -> void:
 	last_result = result
 	Engine.time_scale = 1.0
+	result["stars"] = stars_for(result)
+	result["new_best"] = false
 	if result.get("win", false):
 		var key := "%s:%d" % [location, difficulty]
-		best_scores[key] = maxi(int(best_scores.get(key, 0)), int(result.get("score", 0)))
+		var previous := int(best_scores.get(key, 0))
+		result["new_best"] = int(result.get("score", 0)) > previous
+		best_scores[key] = maxi(previous, int(result.get("score", 0)))
 	save_game()
 	if harness_active():
 		# Scripted runs end here: print the result and exit cleanly.
@@ -236,6 +284,24 @@ func finish_night(result: Dictionary) -> void:
 		get_tree().quit()
 		return
 	get_tree().call_deferred("change_scene_to_file", END_SCENE)
+
+
+## 0 stars for a failed shift; 1 for surviving; 2 if you also kept thefts
+## to one and did 80% of orders; 3 for no thefts and 90%+ of orders.
+func stars_for(result: Dictionary) -> int:
+	if not result.get("win", false):
+		return 0
+	var orders: float = float(result.get("punches", 0)) / maxf(1.0, float(result.get("punches_total", 1)))
+	var thefts := int(result.get("thefts", 0))
+	if thefts == 0 and orders >= 0.9:
+		return 3
+	if thefts <= 1 and orders >= 0.8:
+		return 2
+	return 1
+
+
+func next_location() -> String:
+	return LOCATIONS[(LOCATIONS.find(location) + 1) % LOCATIONS.size()]
 
 
 func go_to_menu() -> void:
@@ -250,6 +316,11 @@ func save_game() -> void:
 	cfg.set_value("settings", "location", location)
 	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.set_value("settings", "sound", sound_enabled)
+	cfg.set_value("settings", "music_volume", music_volume)
+	cfg.set_value("settings", "sfx_volume", sfx_volume)
+	cfg.set_value("settings", "graphics_low", graphics_low)
+	cfg.set_value("settings", "vibration", vibration)
+	cfg.set_value("progress", "tutorial_done", tutorial_done)
 	cfg.save(SAVE_PATH)
 
 
@@ -267,6 +338,11 @@ func load_game() -> void:
 	location = loc if loc in LOCATIONS else "museum"
 	difficulty = clampi(int(cfg.get_value("settings", "difficulty", 2)), 1, 3)
 	sound_enabled = bool(cfg.get_value("settings", "sound", true))
+	music_volume = clampf(float(cfg.get_value("settings", "music_volume", 0.8)), 0.0, 1.0)
+	sfx_volume = clampf(float(cfg.get_value("settings", "sfx_volume", 0.9)), 0.0, 1.0)
+	graphics_low = bool(cfg.get_value("settings", "graphics_low", false))
+	vibration = bool(cfg.get_value("settings", "vibration", true))
+	tutorial_done = bool(cfg.get_value("progress", "tutorial_done", false))
 
 
 func _setup_input() -> void:

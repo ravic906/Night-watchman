@@ -16,6 +16,9 @@ var battery_drain := 1.2
 var flashlight_on := true
 var aim := Vector2.RIGHT
 var stunned := 0.0
+## Camera shake strength (decays to 0).
+var shake := 0.0
+var _shake_rng := RandomNumberGenerator.new()   # own RNG: keeps game randomness reproducible
 
 ## Set by the game for the self-playing smoke test.
 var use_auto := false
@@ -108,6 +111,18 @@ func is_lit(pos: Vector2, radius := 0.0) -> bool:
 
 func stun(seconds: float) -> void:
 	stunned = seconds
+
+
+func add_shake(amount: float) -> void:
+	shake = maxf(shake, amount)
+
+
+func _process(delta: float) -> void:
+	if shake > 0.0:
+		shake = move_toward(shake, 0.0, delta * 2.5)
+		camera.offset = Vector2(_shake_rng.randf_range(-1, 1), _shake_rng.randf_range(-1, 1)) * shake * 14.0
+	elif camera.offset != Vector2.ZERO:
+		camera.offset = Vector2.ZERO
 
 
 func _physics_process(delta: float) -> void:

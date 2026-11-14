@@ -91,7 +91,11 @@ func _draw() -> void:
 func _draw_glow() -> void:
 	for i in WINGS.size():
 		var on: bool = circuits[WINGS[i]]
-		glow.draw_circle(Vector2(-11 + i * 11, -21), 2.5,
-				Color(0.3, 1.0, 0.4, 0.8) if on else Color(1.0, 0.25, 0.2, 0.95))
+		var at := Vector2(-11 + i * 11, -21)
+		glow.draw_circle(at, 2.5, Color(0.3, 1.0, 0.4, 0.8) if on else Color(1.0, 0.25, 0.2, 0.95))
+		if not on:
+			# A cross as well as the colour, for colour-blind players.
+			glow.draw_line(at + Vector2(-4, -4), at + Vector2(4, 4), Color(1, 0.6, 0.5), 1.5)
+			glow.draw_line(at + Vector2(4, -4), at + Vector2(-4, 4), Color(1, 0.6, 0.5), 1.5)
 	if progress > 0.0:
 		glow.draw_arc(Vector2(0, -8), 28, -PI / 2, -PI / 2 + TAU * progress, 32, Color(1, 0.9, 0.5), 4)

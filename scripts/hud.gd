@@ -17,7 +17,8 @@ func _process(delta: float) -> void:
 	# can read them in peace (never in automated runs).
 	if not _auto_opened and game != null and game.elapsed > 0.6:
 		_auto_opened = true
-		if not GameState.autotest and not GameState.harness_active() and not GameState.seen_objectives:
+		if not GameState.autotest and not GameState.harness_active() and not GameState.seen_objectives \
+				and not GameState.tutorial:
 			GameState.seen_objectives = true
 			tab = 0
 			set_expanded(true)
@@ -68,7 +69,8 @@ func _draw() -> void:
 	_bar(o + Vector2(24, 106), "Stamina", p.stamina, Color(0.35, 0.7, 0.9))
 
 	_draw_pointers(font, size)
-	_draw_tracker(font, size)
+	if game.tutorial == null:
+		_draw_tracker(font, size)   # the tutorial prompt replaces it
 
 	# Action prompt
 	if game.near_device != null:
@@ -84,6 +86,8 @@ func _draw() -> void:
 		draw_rect(box, Color(0, 0, 0, 0.5 * alpha))
 		draw_string(font, Vector2(0, size.y * 0.78), m["text"], HORIZONTAL_ALIGNMENT_CENTER, size.x, 19, Color(0.95, 0.95, 0.97, alpha))
 
+	_draw_intro(font, size)
+	_draw_tutorial(font, size)
 	if expanded:
 		_draw_panel(font, size)
 
@@ -110,6 +114,47 @@ var _auto_opened := false
 var _ins := {"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}
 const PANEL_BUTTONS := ["Resume", "Restart", "Quit to menu"]
 var _button_rects: Array = []
+
+
+var _skip_rect := Rect2()
+
+
+## Tutorial prompt: step text, progress and a Skip button, top centre.
+func _draw_tutorial(font: Font, size: Vector2) -> void:
+	_skip_rect = Rect2()
+	var tut = game.tutorial
+	if tut == null or tut.finished:
+		return
+	var w := minf(620.0, size.x - 600.0)
+	if w < 380.0:
+		w = minf(620.0, size.x - 40.0)
+	var x := (size.x - w) / 2.0
+	var y := 12.0 + float(_ins["top"])
+	var r := Rect2(x, y, w, 96)
+	if r.intersects(_tracker_rect):
+		r.position.y = _tracker_rect.end.y + 8.0
+	draw_rect(r, Color(0.05, 0.06, 0.1, 0.92))
+	draw_rect(r, Color(1, 0.9, 0.55, 0.7), false, 2.0)
+	draw_string(font, r.position + Vector2(14, 22), "TUTORIAL  %d / %d" % [tut.step + 1, tut.step_count()],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 0.85, 0.45))
+	draw_multiline_string(font, r.position + Vector2(14, 44), tut.text, HORIZONTAL_ALIGNMENT_LEFT, w - 120, 16, 3, Color(0.95, 0.95, 0.97))
+	_skip_rect = Rect2(r.end.x - 92, r.position.y + 8, 80, 34)
+	draw_rect(_skip_rect, Color(1, 1, 1, 0.08))
+	draw_rect(_skip_rect, Color(1, 1, 1, 0.3), false, 1.0)
+	draw_string(font, _skip_rect.position + Vector2(0, 23), "Skip", HORIZONTAL_ALIGNMENT_CENTER, _skip_rect.size.x, 15, TODO_COL)
+
+
+## "SHIFT START" title card for the first few seconds of a shift.
+func _draw_intro(font: Font, size: Vector2) -> void:
+	var t: float = game.elapsed
+	if t > 3.2 or GameState.automated() or game.tutorial != null:
+		return
+	var a := clampf(minf(t / 0.4, (3.2 - t) / 0.8), 0.0, 1.0)
+	var y := size.y * 0.36
+	draw_rect(Rect2(0, y - 58, size.x, 104), Color(0, 0, 0, 0.55 * a))
+	draw_string(font, Vector2(0, y - 22), "SHIFT START", HORIZONTAL_ALIGNMENT_CENTER, size.x, 16, Color(0.75, 0.78, 0.9, a))
+	draw_string(font, Vector2(0, y + 16), game.location.title.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, size.x, 40, Color(0.95, 0.9, 0.6, a))
+	draw_string(font, Vector2(0, y + 38), "%s  -  10:00 PM to 6:00 AM" % GameState.difficulty_name(), HORIZONTAL_ALIGNMENT_CENTER, size.x, 15, Color(0.75, 0.78, 0.9, a))
 
 
 func _key_hint() -> String:
@@ -188,10 +233,10 @@ func _draw_panel(font: Font, size: Vector2) -> void:
 	_tab_rects.clear()
 	var tw := (w - 24.0) / TABS.size()
 	for i in TABS.size():
-		var tr := Rect2(r.position.x + 12 + i * tw, r.position.y + 12, tw - 6, 40)
+		var tr := Rect2(r.position.x + 12 + i * tw, r.position.y + 10, tw - 6, 48)   # 48 px touch target
 		_tab_rects.append(tr)
 		draw_rect(tr, Color(1, 0.85, 0.5, 0.22) if i == tab else Color(1, 1, 1, 0.06))
-		draw_string(font, tr.position + Vector2(0, 27), TABS[i], HORIZONTAL_ALIGNMENT_CENTER, tr.size.x, 18,
+		draw_string(font, tr.position + Vector2(0, 31), TABS[i], HORIZONTAL_ALIGNMENT_CENTER, tr.size.x, 18,
 				Color(0.95, 0.9, 0.6) if i == tab else DIM_COL)
 	var lines: Array = []
 	match tab:
@@ -204,7 +249,7 @@ func _draw_panel(font: Font, size: Vector2) -> void:
 				lines.append(["%s  %s" % [e["time"], e["text"]], TODO_COL, 14])
 			if lines.is_empty():
 				lines.append(["Nothing has happened yet.", DIM_COL, 14])
-	var y := r.position.y + 80.0
+	var y := r.position.y + 84.0
 	for l in lines:
 		if y > r.end.y - 100.0:
 			break
@@ -330,6 +375,10 @@ func _input(event: InputEvent) -> void:
 		pos = event.position
 	if pos == Vector2.INF:
 		return
+	if not expanded and game.tutorial != null and _skip_rect.has_point(pos):
+		get_viewport().set_input_as_handled()
+		game.tutorial.finish()
+		return
 	if expanded:
 		for i in _button_rects.size():
 			if (_button_rects[i] as Rect2).has_point(pos):
@@ -353,8 +402,12 @@ func _input(event: InputEvent) -> void:
 ## Arrows at the screen edge pointing to things that need you but are off
 ## screen: ordered clocks (amber), intercom calls (orange), machines (red).
 func _draw_pointers(font: Font, size: Vector2) -> void:
-	var xf := get_viewport().get_canvas_transform()
 	var targets: Array = []
+	if game.tutorial != null:
+		if game.tutorial.target_pos() != null:
+			targets.append([game.tutorial.target_pos(), "HERE", Color(1, 1, 1)])
+		_draw_targets(font, size, targets)
+		return
 	for cp in game.orders_open():
 		if not cp.done:
 			targets.append([cp.global_position, cp.cp_name, Color(1.0, 0.8, 0.3)])
@@ -365,6 +418,11 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 	for it in game.intruders:
 		if it.warned and it.is_escaping():
 			targets.append([it.global_position, "THIEF", Color(1.0, 0.25, 0.25)])
+	_draw_targets(font, size, targets)
+
+
+func _draw_targets(font: Font, size: Vector2, targets: Array) -> void:
+	var xf := get_viewport().get_canvas_transform()
 	var centre := size / 2.0
 	var margin := 34.0
 	var bottom := 30.0 + (260.0 if GameState.use_touch_controls() else 0.0) + float(_ins["bottom"])  # keep clear of touch buttons

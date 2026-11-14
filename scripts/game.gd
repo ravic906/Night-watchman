@@ -18,6 +18,7 @@ const WindowPane = preload("res://scripts/window.gd")
 const Shutter = preload("res://scripts/shutter.gd")
 const CallSpot = preload("res://scripts/call_spot.gd")
 const Machine = preload("res://scripts/machine.gd")
+const Tutorial = preload("res://scripts/tutorial.gd")
 
 const MAX_COMPLAINTS := 3
 
@@ -53,6 +54,8 @@ var twist_events := 0
 var _call_timer := 25.0
 ## The location being guarded (map_def.gd instance).
 var location
+## The guided first shift (null in normal play).
+var tutorial = null
 ## Every way into the building: doors + windows.
 var entrances: Array = []
 var alarm = null
@@ -139,7 +142,7 @@ func _ready() -> void:
 	glow_layer.follow_viewport_enabled = true
 	add_child(glow_layer)
 
-	location = GameState.location_def()
+	location = GameState.location_def("museum" if GameState.tutorial else "")
 	level = Level.new()
 	level.name = "Level"
 	world.add_child(level)
@@ -238,6 +241,13 @@ func _ready() -> void:
 		hud_layer.add_child(touch)
 
 	Music.play_game()
+	if GameState.tutorial:
+		_event_timer = 99999.0
+		tutorial = Tutorial.new()
+		tutorial.game = self
+		add_child(tutorial)
+	if not GameState.automated():
+		GameState.fade_in(self, 0.8)
 	message("%s - %s" % [location.title, GameState.difficulty_name()], 4.0)
 	message(location.duty_hint, 6.0, false)
 	message("Every hour the radio tells you which clocks to punch.", 6.0, false)
@@ -307,7 +317,8 @@ func add_noise(pos: Vector2, color: Color, anywhere := false) -> void:
 func _physics_process(delta: float) -> void:
 	if ended:
 		return
-	elapsed += delta
+	if tutorial == null:
+		elapsed += delta   # the clock stands still during the tutorial
 	_update_harness()
 	flash = maxf(0.0, flash - delta * 1.5)
 
@@ -345,7 +356,9 @@ func _physics_process(delta: float) -> void:
 			b.remove()
 			message("Fresh batteries. +45%", 2.0)
 
-	if GameState.autotest_survive:
+	if tutorial != null:
+		pass   # nothing can end the tutorial shift
+	elif GameState.autotest_survive:
 		player.fear = minf(player.fear, 90.0)
 		if elapsed >= shift_len:
 			_end_of_shift()
@@ -415,7 +428,8 @@ func _update_rounds() -> void:
 	if has_next:
 		text += " Next: %s." % _names(_next_picks)
 	message(text, 5.0, false)
-	toast("Radio: punch %s" % _names(picks), 4.0)
+	if tutorial == null:
+		toast("Radio: punch %s" % _names(picks), 4.0)
 	Music.stinger("radio", -4.0)
 
 
@@ -594,6 +608,8 @@ func on_lock_picked(_intruder, door) -> void:
 
 
 func on_window_forced(win, smashed: bool) -> void:
+	if smashed:
+		jolt(0.3, 80)
 	sabotages += 1
 	if smashed:
 		Music.sfx_at("glass_break", win.global_position, 2.0, randf_range(0.9, 1.1), 2600.0)
@@ -927,6 +943,7 @@ func on_intruder_scared(intruder, dropped_loot: bool) -> void:
 		return   # already running from you: no extra score for scaring it again
 	intruder.was_scared = true
 	scared += 1
+	GameState.vibrate(40)
 	score += 150 if dropped_loot else 100
 	message("Thief scared off - they dropped the loot!" if dropped_loot else "Thief scared off!", 2.5)
 	Music.stinger("spotted", -3.0)
@@ -942,6 +959,7 @@ func on_item_grabbed(intruder, _valuable) -> void:
 
 
 func on_theft(_intruder, valuable) -> void:
+	jolt(0.45, 150)
 	escaped += 1
 	thefts += 1
 	if GameState.autotest_survive:
@@ -952,7 +970,14 @@ func on_theft(_intruder, valuable) -> void:
 	Music.stinger("theft")
 
 
+## Screen shake + phone buzz for big moments.
+func jolt(shake_amount: float, buzz_ms: int) -> void:
+	player.add_shake(shake_amount)
+	GameState.vibrate(buzz_ms)
+
+
 func on_shadow_caught(s) -> void:
+	jolt(1.0, 300)
 	touches += 1
 	player.fear = minf(100.0, player.fear + 30.0)
 	flash = 1.0
@@ -960,16 +985,33 @@ func on_shadow_caught(s) -> void:
 	player.global_position = level.player_spawn
 	player.stun(1.0)
 	player.flashlight_on = true
-	player.battery = maxf(player.battery, 25.0)
 	fear_grace = 5.0
 	s.reset_to(_shadow_respawn_spot())
 	message("IT TOUCHED YOU. You come to at the security desk.", 3.5)
 	if float(cfg.get("touch_cost", 0)) > 0.0:
-		# Lost time: the clock jumps 10 s and the shaken watchman loses score.
+		# Lost time: the clock jumps 10 s, and the building carries on without
+		# you: thieves keep moving, machines heat up, residents keep waiting.
 		elapsed += 10.0
 		add_score(-100)
+		_simulate_lost_time(10.0)
 		_update_rounds()   # the radio reacts straight away if the hour rolled over
 	Music.stinger("scare")
+
+
+## Runs the world (not the watchman) forward while he was out cold.
+func _simulate_lost_time(seconds: float) -> void:
+	var step := 1.0 / 30.0
+	var steps := int(seconds / step)
+	for i in steps:
+		for it in intruders.duplicate():
+			if is_instance_valid(it):
+				it._physics_process(step)
+	for m in machines:
+		if m.running:
+			m.run_time += seconds
+	for c in call_spots:
+		if c.active:
+			c.time_left -= seconds
 
 
 # --- location twists ---------------------------------------------------------
@@ -1078,6 +1120,7 @@ func on_machine_stopped(m) -> void:
 
 
 func on_machine_overheat(m) -> void:
+	jolt(0.35, 120)
 	var wing: String = level.wing_of(m.global_position)
 	_power_off_wing(wing)
 	player.fear = minf(100.0, player.fear + 8.0)

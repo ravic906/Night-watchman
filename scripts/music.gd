@@ -13,6 +13,8 @@ const STINGER_NAMES := ["scare", "theft", "spotted", "dawn", "fail", "punch",
 ## Names that pick a random take, so repeated sounds do not feel mechanical.
 const VARIANTS := {"step": 4, "sneak": 3}
 const FADE_SPEED := 1.5
+const MUSIC_BASE_DB := -3.0
+const SFX_BASE_DB := -1.0
 const MIN_LINEAR := 0.001
 
 var enabled := true
@@ -25,8 +27,8 @@ var _heart_rate := 1.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_make_bus("Music", -3.0)
-	_make_bus("SFX", -1.0)
+	_make_bus("Music", MUSIC_BASE_DB)
+	_make_bus("SFX", SFX_BASE_DB)
 	for n in LOOP_NAMES:
 		var stream: AudioStreamOggVorbis = load("res://audio/%s.ogg" % n)
 		stream.loop = true
@@ -39,7 +41,7 @@ func _ready() -> void:
 		_targets[n] = 0.0
 	for n in STINGER_NAMES:
 		_stingers[n] = load("res://audio/%s.ogg" % n)
-	set_enabled(GameState.sound_enabled)
+	set_enabled(GameState.sound_enabled)   # also applies the volume sliders
 
 
 func _make_bus(bus_name: String, db: float) -> void:
@@ -151,10 +153,18 @@ func _on_one_shot_check(p, tries_left: int) -> void:   # untyped: p may already 
 		p.queue_free()
 
 
+## Applies the Settings sliders (0..1) to the Music and SFX buses.
+func apply_volumes() -> void:
+	for pair in [["Music", MUSIC_BASE_DB, GameState.music_volume], ["SFX", SFX_BASE_DB, GameState.sfx_volume]]:
+		var i := AudioServer.get_bus_index(pair[0])
+		var v: float = pair[2]
+		AudioServer.set_bus_volume_db(i, pair[1] + linear_to_db(maxf(v, 0.001)))
+		AudioServer.set_bus_mute(i, v <= 0.01 or not enabled)
+
+
 func set_enabled(on: bool) -> void:
 	enabled = on
-	for bus_name in ["Music", "SFX"]:
-		AudioServer.set_bus_mute(AudioServer.get_bus_index(bus_name), not on)
+	apply_volumes()
 
 
 func _process(delta: float) -> void:

@@ -8,11 +8,13 @@ var _diff_buttons := {} # difficulty -> Button
 
 
 var _quit_dialog: ConfirmationDialog
+var _tutorial_offer: ConfirmationDialog
 var _defs := {}   # location id -> map definition (loaded once)
 
 
 func _ready() -> void:
 	GameState.set_menu_power(true)
+	GameState.fade_in(self)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_quit_dialog = ConfirmationDialog.new()
 	_quit_dialog.dialog_text = "Quit Night Watchman?"
@@ -20,6 +22,16 @@ func _ready() -> void:
 	_quit_dialog.cancel_button_text = "Stay"
 	_quit_dialog.confirmed.connect(func(): get_tree().quit())
 	add_child(_quit_dialog)
+	_tutorial_offer = ConfirmationDialog.new()
+	_tutorial_offer.dialog_text = "First shift? The 2-minute tutorial shows you the ropes."
+	_tutorial_offer.ok_button_text = "Play tutorial"
+	_tutorial_offer.cancel_button_text = "Skip it"
+	_tutorial_offer.confirmed.connect(GameState.start_tutorial)
+	_tutorial_offer.canceled.connect(func():
+		GameState.tutorial_done = true
+		GameState.save_game()
+		GameState.start_shift())
+	add_child(_tutorial_offer)
 	Music.play_menu()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -90,21 +102,23 @@ func _ready() -> void:
 	var start := _button("START SHIFT")
 	start.add_theme_font_size_override("font_size", 24)
 	start.custom_minimum_size = Vector2(0, 60)
-	start.pressed.connect(func(): GameState.start_shift())
+	start.pressed.connect(_on_start)
 	box.add_child(start)
 	_refresh_best()
 
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	box.add_child(row)
-	var sound_btn := _button(_sound_label())
-	sound_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sound_btn.pressed.connect(func():
-		GameState.sound_enabled = not GameState.sound_enabled
-		Music.set_enabled(GameState.sound_enabled)
-		GameState.save_game()
-		sound_btn.text = _sound_label())
-	row.add_child(sound_btn)
+	var settings_btn := _button("Settings")
+	settings_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_btn.pressed.connect(_open_settings)
+	row.add_child(settings_btn)
+	_build_settings()
+
+	var tut_btn := _button("Tutorial")
+	tut_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tut_btn.pressed.connect(GameState.start_tutorial)
+	row.add_child(tut_btn)
 
 	var help_btn := _button("How to play")
 	help_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -143,6 +157,104 @@ func _refresh_best() -> void:
 		_cards[loc_id].text = "%s\n%s%s" % [def.title.to_upper(), def.blurb, "\n" + line if line != "" else ""]
 
 
+# --- Settings panel -----------------------------------------------------------
+
+var _settings: PanelContainer
+var _backdrop: ColorRect
+
+
+func _build_settings() -> void:
+	_backdrop = ColorRect.new()
+	_backdrop.color = Color(0, 0, 0, 0.75)
+	_backdrop.visible = false
+	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_backdrop)
+	_settings = PanelContainer.new()
+	_settings.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.06, 0.07, 0.1, 0.98)
+	style.border_color = Color(1, 0.85, 0.5, 0.4)
+	style.set_border_width_all(2)
+	style.set_content_margin_all(24)
+	_settings.add_theme_stylebox_override("panel", style)
+	_settings.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	add_child(_settings)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(460, 0)
+	box.add_theme_constant_override("separation", 14)
+	_settings.add_child(box)
+	var title := Label.new()
+	title.text = "SETTINGS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color(0.95, 0.9, 0.6))
+	box.add_child(title)
+	box.add_child(_slider_row("Music volume", GameState.music_volume, func(v):
+		GameState.music_volume = v
+		Music.apply_volumes()))
+	box.add_child(_slider_row("Sound effects", GameState.sfx_volume, func(v):
+		GameState.sfx_volume = v
+		Music.apply_volumes()
+		Music.stinger("punch", -6.0)))
+	box.add_child(_toggle_row("High-quality shadows", not GameState.graphics_low,
+			"Turn off for smoother play on budget phones", func(on): GameState.graphics_low = not on))
+	box.add_child(_toggle_row("Vibration", GameState.vibration, "Short buzz on scares and thefts",
+			func(on):
+				GameState.vibration = on
+				GameState.vibrate(60)))
+	var done := _button("Done")
+	done.pressed.connect(_close_settings)
+	box.add_child(done)
+
+
+func _slider_row(label_text: String, value: float, on_change: Callable) -> Control:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	label.text = label_text
+	label.add_theme_font_size_override("font_size", 17)
+	row.add_child(label)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = value
+	slider.custom_minimum_size = Vector2(0, 40)   # big enough for a thumb
+	slider.value_changed.connect(on_change)
+	row.add_child(slider)
+	return row
+
+
+func _toggle_row(label_text: String, on: bool, hint: String, on_change: Callable) -> Control:
+	var row := VBoxContainer.new()
+	var toggle := CheckButton.new()
+	toggle.text = label_text
+	toggle.button_pressed = on
+	toggle.custom_minimum_size = Vector2(0, 48)
+	toggle.add_theme_font_size_override("font_size", 17)
+	toggle.toggled.connect(on_change)
+	row.add_child(toggle)
+	var small := Label.new()
+	small.text = hint
+	small.add_theme_font_size_override("font_size", 13)
+	small.add_theme_color_override("font_color", Color(0.65, 0.68, 0.8))
+	row.add_child(small)
+	return row
+
+
+func _open_settings() -> void:
+	_backdrop.visible = true
+	_settings.visible = true
+	_settings.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_settings.reset_size()
+	_settings.position = (get_viewport_rect().size - _settings.size) / 2.0
+
+
+func _close_settings() -> void:
+	_backdrop.visible = false
+	_settings.visible = false
+	GameState.save_game()
+
+
 func _sound_label() -> String:
 	return "Sound: On" if GameState.sound_enabled else "Sound: Off"
 
@@ -159,11 +271,21 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _ask_quit() -> void:
+	if _settings != null and _settings.visible:
+		_close_settings()
+		return
 	if _help != null and _help.visible:
 		_help.visible = false
 		return
 	if not _quit_dialog.visible:
 		_quit_dialog.popup_centered()
+
+
+func _on_start() -> void:
+	if GameState.tutorial_done:
+		GameState.start_shift()
+	else:
+		_tutorial_offer.popup_centered()
 
 
 func _spacer(h: float) -> Control:
