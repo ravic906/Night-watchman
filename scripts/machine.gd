@@ -17,6 +17,8 @@ var saboteur = null
 var game
 var _hum: AudioStreamPlayer2D
 var _t := 0.0
+var _redraw_acc := 0.0
+var _was_running := false
 
 
 func _ready() -> void:
@@ -84,7 +86,12 @@ func _physics_process(delta: float) -> void:
 		if run_time >= OVERHEAT_TIME and not overheated:
 			overheated = true
 			game.on_machine_overheat(self)
-	glow.queue_redraw()
+	if running or progress > 0.0 or _was_running:
+		_redraw_acc += delta
+		if _redraw_acc >= 0.05:   # animate glows at 20 Hz, not every frame
+			_redraw_acc = 0.0
+			glow.queue_redraw()
+	_was_running = running
 
 
 func _draw() -> void:

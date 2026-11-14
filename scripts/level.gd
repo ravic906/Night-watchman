@@ -123,6 +123,7 @@ func build(location) -> void:
 	for i in width * height:
 		_floor_seed.append(rng.randf())
 
+	_bake()
 	wall_node = Node2D.new()
 	wall_node.name = "Walls"
 	wall_node.draw.connect(_draw_walls)
@@ -283,45 +284,83 @@ func random_floor_far_from(pos: Vector2, min_dist: float) -> Vector2:
 	return cell_to_world(floor_cells.pick_random())
 
 
-func _draw() -> void:
-	# Floors are shaded: you only see them by lamp or flashlight.
+## Floor and walls never change, so they are painted once into two images
+## at load time and drawn as two textures (instead of thousands of shapes
+## every frame, which cheap phones struggle with).
+var _floor_tex: ImageTexture
+var _wall_tex: ImageTexture
+
+
+func _bake() -> void:
+	var w := width * TILE
+	var h := height * TILE
+	var floor_img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var grout: Color = def.theme["grout"]
+	var crack: Color = def.theme["crack"]
 	for cell in floor_cells:
-		var r := Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE)
+		var x0: int = cell.x * TILE
+		var y0: int = cell.y * TILE
 		var checker := (cell.x + cell.y) % 2 == 0
-		var base: Color = def.theme["floor_a"] if checker else def.theme["floor_b"]
-		draw_rect(r, base)
-		var s: float = _floor_seed[cell.y * width + cell.x]
-		if s > 0.82:
+		floor_img.fill_rect(Rect2i(x0, y0, TILE, TILE), def.theme["floor_a"] if checker else def.theme["floor_b"])
+		for edge in [Rect2i(x0, y0, TILE, 1), Rect2i(x0, y0 + TILE - 1, TILE, 1), Rect2i(x0, y0, 1, TILE), Rect2i(x0 + TILE - 1, y0, 1, TILE)]:
+			floor_img.fill_rect(edge, grout)
+		var sd: float = _floor_seed[cell.y * width + cell.x]
+		if sd > 0.82:
 			# A crack or scuff on some tiles.
-			var p := r.position + Vector2(8 + s * 20, 10)
-			draw_line(p, p + Vector2(14, 18 * s), def.theme["crack"], 1.5)
-		draw_rect(r, def.theme["grout"], false, 1.0)
+			var a := Vector2(x0 + 8 + sd * 20, y0 + 10)
+			var b := a + Vector2(14, 18 * sd)
+			for i in 24:
+				var q := a.lerp(b, i / 23.0)
+				floor_img.fill_rect(Rect2i(int(q.x), int(q.y), 2, 2), crack)
+	_floor_tex = ImageTexture.create_from_image(floor_img)
 
-
-func _draw_walls() -> void:
+	var wall_img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	var fill: Color = def.theme["wall"]
-	var edge: Color = def.theme["wall_edge"]
+	var edge_col: Color = def.theme["wall_edge"]
 	for cell in _walls:
-		var r := Rect2(cell.x * TILE, cell.y * TILE, TILE, TILE)
+		var x0: int = cell.x * TILE
+		var y0: int = cell.y * TILE
 		if _machinery.has(cell):
-			_draw_machinery(cell, r)
+			_bake_machinery(wall_img, cell, x0, y0)
 			continue
-		wall_node.draw_rect(r, fill)
+		wall_img.fill_rect(Rect2i(x0, y0, TILE, TILE), fill)
 		# Highlight edges that face a floor tile.
 		if not _walls.has(cell + Vector2i.DOWN) and cell.y + 1 < height:
-			wall_node.draw_line(Vector2(r.position.x, r.end.y), r.end, edge, 3.0)
+			wall_img.fill_rect(Rect2i(x0, y0 + TILE - 3, TILE, 3), edge_col)
 		if not _walls.has(cell + Vector2i.UP) and cell.y > 0:
-			wall_node.draw_line(r.position, Vector2(r.end.x, r.position.y), edge, 2.0)
+			wall_img.fill_rect(Rect2i(x0, y0, TILE, 2), edge_col)
 		if not _walls.has(cell + Vector2i.LEFT) and cell.x > 0:
-			wall_node.draw_line(r.position, Vector2(r.position.x, r.end.y), edge, 2.0)
+			wall_img.fill_rect(Rect2i(x0, y0, 2, TILE), edge_col)
 		if not _walls.has(cell + Vector2i.RIGHT) and cell.x + 1 < width:
-			wall_node.draw_line(Vector2(r.end.x, r.position.y), r.end, edge, 2.0)
+			wall_img.fill_rect(Rect2i(x0 + TILE - 2, y0, 2, TILE), edge_col)
 	for cell in _doors:
 		if _windows.has(cell):
 			continue
-		var r := Rect2(cell.x * TILE + 6, cell.y * TILE + 2, TILE - 12, TILE - 4)
-		wall_node.draw_rect(r, Color(0.28, 0.17, 0.1))
-		wall_node.draw_rect(r, Color(0.45, 0.3, 0.18), false, 2.0)
+		var r := Rect2i(cell.x * TILE + 6, cell.y * TILE + 2, TILE - 12, TILE - 4)
+		wall_img.fill_rect(r, Color(0.45, 0.3, 0.18))
+		wall_img.fill_rect(r.grow(-2), Color(0.28, 0.17, 0.1))
+	_wall_tex = ImageTexture.create_from_image(wall_img)
+
+
+## Machinery and racks: steel blocks with rivets and hazard edges.
+func _bake_machinery(img: Image, cell: Vector2i, x0: int, y0: int) -> void:
+	img.fill_rect(Rect2i(x0, y0, TILE, TILE), Color(0.2, 0.22, 0.24))
+	img.fill_rect(Rect2i(x0 + 4, y0 + 4, TILE - 8, TILE - 8), Color(0.26, 0.28, 0.3))
+	img.fill_rect(Rect2i(x0 + 6, y0 + 6, 4, 4), Color(0.4, 0.42, 0.45))
+	img.fill_rect(Rect2i(x0 + TILE - 10, y0 + TILE - 10, 4, 4), Color(0.4, 0.42, 0.45))
+	if not _machinery.has(cell + Vector2i.DOWN):
+		img.fill_rect(Rect2i(x0, y0 + TILE - 4, TILE, 3), Color(0.58, 0.49, 0.17))
+
+
+func _draw() -> void:
+	# Floors are shaded: you only see them by lamp or flashlight.
+	if _floor_tex != null:
+		draw_texture(_floor_tex, Vector2.ZERO)
+
+
+func _draw_walls() -> void:
+	if _wall_tex != null:
+		wall_node.draw_texture(_wall_tex, Vector2.ZERO)
 	for cell in _doorways:
 		_draw_door(cell, _doorways[cell])
 	var font := ThemeDB.fallback_font
@@ -329,16 +368,6 @@ func _draw_walls() -> void:
 		var cell: Vector2i = label[1]
 		wall_node.draw_string(font, Vector2(cell.x * TILE + 8, cell.y * TILE + 22), label[0],
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 16, def.theme["label"])
-
-
-## Machinery and racks: steel blocks with rivets and hazard edges.
-func _draw_machinery(cell: Vector2i, r: Rect2) -> void:
-	wall_node.draw_rect(r, Color(0.2, 0.22, 0.24))
-	wall_node.draw_rect(r.grow(-4), Color(0.26, 0.28, 0.3))
-	wall_node.draw_circle(r.position + Vector2(8, 8), 2.0, Color(0.4, 0.42, 0.45))
-	wall_node.draw_circle(r.end - Vector2(8, 8), 2.0, Color(0.4, 0.42, 0.45))
-	if not _machinery.has(cell + Vector2i.DOWN):
-		wall_node.draw_line(Vector2(r.position.x, r.end.y - 2), r.end - Vector2(0, 2), Color(0.8, 0.65, 0.1, 0.6), 3.0)
 
 
 ## A door leaf hinged on the doorway's wall, standing open. After the

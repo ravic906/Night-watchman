@@ -222,6 +222,8 @@ func _ready() -> void:
 	player.battery_drain = cfg["battery_drain"]
 	world.add_child(player)
 	player.set_camera_limits(level.world_size())
+	for lamp in lamps:
+		lamp.game_player = player
 	player.use_auto = GameState.autotest or GameState.inputs_path != ""
 	_load_inputs()
 
@@ -677,7 +679,24 @@ func on_intruder_exit(_intruder, pos: Vector2) -> void:
 			message("ALARM: the %s door was opened from inside." % door.door_name, 3.0)
 
 
+var _safe_cache_time := -1.0
+var _safe_cache_pos := Vector2.INF
+var _safe_cache := false
+
+
+## Is `pos` lit by a lamp or the desk light? Cached for 0.1 s per spot,
+## since it raycasts against every lamp.
 func in_safe_light(pos: Vector2) -> bool:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _safe_cache_time < 0.1 and pos.distance_to(_safe_cache_pos) < 8.0:
+		return _safe_cache
+	_safe_cache_time = now
+	_safe_cache_pos = pos
+	_safe_cache = _compute_safe_light(pos)
+	return _safe_cache
+
+
+func _compute_safe_light(pos: Vector2) -> bool:
 	if desk_light != null and pos.distance_to(level.player_spawn) < 110.0:
 		return true
 	for lamp in lamps:

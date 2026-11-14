@@ -12,6 +12,7 @@ var time_left := 0.0
 var progress := 0.0
 var interact_range := 56.0
 var _t := 0.0
+var _redraw_acc := 0.0
 
 
 func _ready() -> void:
@@ -49,7 +50,10 @@ func _physics_process(delta: float) -> void:
 	_t += delta
 	if active:
 		time_left -= delta
-	glow.queue_redraw()
+	_redraw_acc += delta
+	if _redraw_acc >= 0.05:   # animate glows at 20 Hz, not every frame
+		_redraw_acc = 0.0
+		glow.queue_redraw()
 
 
 func _draw() -> void:

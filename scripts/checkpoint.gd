@@ -65,10 +65,20 @@ func sabotage(game) -> void:
 	game.on_clock_jammed(self)
 
 
+var _redraw_acc := 0.0
+var _drawn_state := ""
+
+
 func _process(delta: float) -> void:
 	_t += delta
-	glow.queue_redraw()
-	queue_redraw()
+	_redraw_acc += delta
+	if _redraw_acc >= 0.05:   # animate glows at 20 Hz, not every frame
+		_redraw_acc = 0.0
+		glow.queue_redraw()
+	var state := "%s%s" % [jammed, done]
+	if state != _drawn_state:   # the clock body only changes when jammed / punched
+		_drawn_state = state
+		queue_redraw()
 
 
 func _draw() -> void:

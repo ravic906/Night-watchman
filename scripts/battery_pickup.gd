@@ -12,9 +12,15 @@ func _ready() -> void:
 	glow.position = global_position
 
 
+var _redraw_acc := 0.0
+
+
 func _process(delta: float) -> void:
 	_t += delta
-	glow.queue_redraw()
+	_redraw_acc += delta
+	if _redraw_acc >= 0.05:   # animate glows at 20 Hz, not every frame
+		_redraw_acc = 0.0
+		glow.queue_redraw()
 
 
 func _draw() -> void:

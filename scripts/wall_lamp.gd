@@ -8,6 +8,10 @@ var glow: Node2D
 var light: PointLight2D
 var on := true
 var dead := false
+var _drawn_lit := true
+var _shadow_check := 0.0
+## The watchman (set by the game) for shadow culling.
+var game_player: Node2D
 var tint := Color(1.0, 0.85, 0.6)
 ## False while the breaker for this lamp's wing is off.
 var powered := true
@@ -68,7 +72,15 @@ func _physics_process(delta: float) -> void:
 		if _flicker_left <= 0.0:
 			on = true
 	light.enabled = lit()
-	glow.queue_redraw()
+	if lit() != _drawn_lit:   # redraw the fixture only when it changes
+		_drawn_lit = lit()
+		glow.queue_redraw()
+	# Shadows only for lamps near the watchman (they're the expensive part).
+	_shadow_check -= delta
+	if _shadow_check <= 0.0 and game_player != null:
+		_shadow_check = 0.25
+		light.shadow_enabled = not GameState.graphics_low \
+				and global_position.distance_to(game_player.global_position) < 1100.0
 
 
 func _draw_glow() -> void:

@@ -54,9 +54,22 @@ func sabotage(game) -> void:
 	game.on_alarm_cut(self)
 
 
+var _redraw_acc := 0.0
+
+
 func _process(delta: float) -> void:
 	_t += delta
-	glow.queue_redraw()
+	_redraw_acc += delta
+	if _redraw_acc >= 0.05:   # animate glows at 20 Hz, not every frame
+		_redraw_acc = 0.0
+		glow.queue_redraw()
+	var state := "%s%s" % [armed, cut]
+	if state != _drawn_state:
+		_drawn_state = state
+		queue_redraw()
+
+
+var _drawn_state := ""
 
 
 func _draw() -> void:
