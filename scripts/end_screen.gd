@@ -2,7 +2,19 @@ extends Control
 ## Shift report after a night ends.
 
 
+## Android Back / Esc on the report goes back to the title screen.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		GameState.go_to_menu()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		GameState.go_to_menu()
+
+
 func _ready() -> void:
+	GameState.set_menu_power(true)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

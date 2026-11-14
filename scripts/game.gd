@@ -101,7 +101,17 @@ var _last_cell := Vector2i(-1, -1)
 var _door_cooldown := 0.0
 
 
+## Phone call, home button, notification shade: pause into the objectives
+## panel so a shift is never lost to an interruption.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		if not ended and hud != null and not GameState.automated():
+			hud.set_expanded(true)
+			GameState.save_game()
+
+
 func _ready() -> void:
+	GameState.set_menu_power(false)
 	if GameState.seed_value >= 0:
 		seed(GameState.seed_value)
 	else:
@@ -1242,6 +1252,16 @@ func _snapshot(t: float) -> void:
 		"intruders": intruders.map(func(it): return {"cell": _cell_of(it), "state": Intruder.State.keys()[it.state], "inside": it.inside, "lit": it.lit}),
 		"shadows": shadows.map(func(sh): return {"cell": _cell_of(sh), "lit": sh.lit}),
 		"batteries": batteries.map(func(b): return _cell_of(b)),
+		"perf": {
+			"fps": Engine.get_frames_per_second(),
+			"process_ms": snappedf(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, 0.01),
+			"physics_ms": snappedf(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0, 0.01),
+			"draw_calls": Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			"objects": Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
+			"nodes": Performance.get_monitor(Performance.OBJECT_NODE_COUNT),
+			"orphans": Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT),
+			"static_mb": snappedf(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0, 0.1),
+		},
 		"messages": log_entries.slice(-6).map(func(m): return m["text"]),
 	}
 	var dir := GameState.out_dir if GameState.out_dir != "" else "user://harness"

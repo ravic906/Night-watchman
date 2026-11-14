@@ -7,8 +7,18 @@ var _cards := {}       # location id -> Button
 var _diff_buttons := {} # difficulty -> Button
 
 
+var _quit_dialog: ConfirmationDialog
+
+
 func _ready() -> void:
+	GameState.set_menu_power(true)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_quit_dialog = ConfirmationDialog.new()
+	_quit_dialog.dialog_text = "Quit Night Watchman?"
+	_quit_dialog.ok_button_text = "Quit"
+	_quit_dialog.cancel_button_text = "Stay"
+	_quit_dialog.confirmed.connect(func(): get_tree().quit())
+	add_child(_quit_dialog)
 	Music.play_menu()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -133,6 +143,25 @@ func _refresh_best() -> void:
 
 func _sound_label() -> String:
 	return "Sound: On" if GameState.sound_enabled else "Sound: Off"
+
+
+## Android Back (and Esc on desktop) on the title screen: confirm before quitting.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_ask_quit()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		_ask_quit()
+
+
+func _ask_quit() -> void:
+	if _help != null and _help.visible:
+		_help.visible = false
+		return
+	if not _quit_dialog.visible:
+		_quit_dialog.popup_centered()
 
 
 func _spacer(h: float) -> Control:

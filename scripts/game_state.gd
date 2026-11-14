@@ -78,6 +78,8 @@ var out_dir := ""
 var until_time := -1.0
 var fast := false
 var log_windows := false
+## Dev helper: `-- --safe-inset=N` fakes a notch of N px on every edge.
+var debug_inset := 0.0
 
 
 func _ready() -> void:
@@ -124,11 +126,14 @@ func _ready() -> void:
 			until_time = float(a.get_slice("=", 1))
 		elif a == "--fast":
 			fast = true
+		elif a.begins_with("--safe-inset="):
+			debug_inset = float(a.get_slice("=", 1))
 		elif a == "--log-windows":
 			log_windows = true
 		elif a.begins_with("--screenshot="):
 			_take_screenshot_later(a.trim_prefix("--screenshot="))
 	_setup_input()
+	set_menu_power(true)
 	var cli_difficulty := difficulty
 	var cli_location := location
 	load_game()
@@ -146,6 +151,39 @@ func _take_screenshot_later(path: String) -> void:
 	get_viewport().get_texture().get_image().save_png(path)
 	print("Saved screenshot to ", path)
 	get_tree().quit()
+
+
+## Menus run at 30 FPS to save battery; shifts at a steady 60.
+func set_menu_power(in_menu: bool) -> void:
+	Engine.max_fps = 30 if in_menu else 60
+
+
+## Screen-edge insets (notches, rounded corners, gesture bars) in viewport
+## units, so HUD and touch controls stay clear of them.
+func safe_insets() -> Dictionary:
+	var out := {"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}
+	if debug_inset > 0.0:
+		for k in out:
+			out[k] = debug_inset
+		return out
+	if not OS.has_feature("mobile"):
+		return out
+	var screen := Vector2(DisplayServer.screen_get_size())
+	var safe := DisplayServer.get_display_safe_area()
+	var vp := get_tree().root.get_visible_rect().size
+	if screen.x <= 0.0 or screen.y <= 0.0:
+		return out
+	var sx := vp.x / screen.x
+	var sy := vp.y / screen.y
+	out["left"] = clampf(safe.position.x * sx, 0.0, 140.0)
+	out["top"] = clampf(safe.position.y * sy, 0.0, 140.0)
+	out["right"] = clampf((screen.x - safe.end.x) * sx, 0.0, 140.0)
+	out["bottom"] = clampf((screen.y - safe.end.y) * sy, 0.0, 140.0)
+	return out
+
+
+func automated() -> bool:
+	return autotest or harness_active()
 
 
 func settings() -> Dictionary:

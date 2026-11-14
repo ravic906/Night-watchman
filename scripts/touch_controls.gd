@@ -21,11 +21,13 @@ func _ready() -> void:
 
 
 func _btn_pos(b: Dictionary) -> Vector2:
-	return get_viewport_rect().size + b["offset"]
+	var ins := GameState.safe_insets()
+	return get_viewport_rect().size + b["offset"] - Vector2(ins["right"], ins["bottom"])
 
 
 func _default_joy_center() -> Vector2:
-	return Vector2(160, get_viewport_rect().size.y - 160)
+	var ins := GameState.safe_insets()
+	return Vector2(160 + float(ins["left"]), get_viewport_rect().size.y - 160 - float(ins["bottom"]))
 
 
 func _input(event: InputEvent) -> void:

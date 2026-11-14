@@ -39,6 +39,7 @@ func _draw() -> void:
 	var font := ThemeDB.fallback_font
 	var size := get_viewport_rect().size
 	var p = game.player
+	_ins = GameState.safe_insets()
 
 	# Fear vignette: the screen closes in as panic rises.
 	var fear: float = p.fear
@@ -55,15 +56,16 @@ func _draw() -> void:
 	if game.flash > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.6, 0.0, 0.0, game.flash * 0.7))
 
-	# Top-left panel
-	draw_rect(Rect2(12, 12, 280, 132), Color(0, 0, 0, 0.45))
-	draw_string(font, Vector2(24, 44), game.clock_text(), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(0.95, 0.9, 0.6))
-	draw_string(font, Vector2(160, 30), game.location.title, HORIZONTAL_ALIGNMENT_LEFT, 125, 14, Color(0.7, 0.75, 0.9))
-	draw_string(font, Vector2(160, 47), GameState.difficulty_name(), HORIZONTAL_ALIGNMENT_LEFT, 125, 13, Color(0.55, 0.6, 0.75))
+	# Top-left panel (kept clear of notches)
+	var o := Vector2(_ins["left"], _ins["top"])
+	draw_rect(Rect2(o + Vector2(12, 12), Vector2(280, 132)), Color(0, 0, 0, 0.45))
+	draw_string(font, o + Vector2(24, 44), game.clock_text(), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(0.95, 0.9, 0.6))
+	draw_string(font, o + Vector2(160, 30), game.location.title, HORIZONTAL_ALIGNMENT_LEFT, 125, 14, Color(0.7, 0.75, 0.9))
+	draw_string(font, o + Vector2(160, 47), GameState.difficulty_name(), HORIZONTAL_ALIGNMENT_LEFT, 125, 13, Color(0.55, 0.6, 0.75))
 	var batt_col := Color(0.95, 0.85, 0.3) if p.battery > 15.0 else Color(1, 0.3, 0.2)
-	_bar(Vector2(24, 58), "Battery" if p.flashlight_on else "Battery (off)", p.battery, batt_col)
-	_bar(Vector2(24, 82), "Fear", fear, Color(0.8, 0.15, 0.25))
-	_bar(Vector2(24, 106), "Stamina", p.stamina, Color(0.35, 0.7, 0.9))
+	_bar(o + Vector2(24, 58), "Battery" if p.flashlight_on else "Battery (off)", p.battery, batt_col)
+	_bar(o + Vector2(24, 82), "Fear", fear, Color(0.8, 0.15, 0.25))
+	_bar(o + Vector2(24, 106), "Stamina", p.stamina, Color(0.35, 0.7, 0.9))
 
 	_draw_pointers(font, size)
 	_draw_tracker(font, size)
@@ -105,6 +107,9 @@ var _tracker_rect := Rect2()
 var _tab_rects: Array = []
 var _panel_rect := Rect2()
 var _auto_opened := false
+var _ins := {"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0}
+const PANEL_BUTTONS := ["Resume", "Restart", "Quit to menu"]
+var _button_rects: Array = []
 
 
 func _key_hint() -> String:
@@ -149,18 +154,19 @@ func _objectives() -> Array:
 
 func _draw_tracker(font: Font, size: Vector2) -> void:
 	var items := _objectives()
-	var x := size.x - TRACKER_W - 12.0
+	var x := size.x - TRACKER_W - 12.0 - float(_ins["right"])
+	var top := 12.0 + float(_ins["top"])
 	var lines := mini(items.size(), 3)
 	var h := 58.0 + lines * 22.0 + (18.0 if items.size() > 3 else 0.0)
-	_tracker_rect = Rect2(x, 12, TRACKER_W, h)
+	_tracker_rect = Rect2(x, top, TRACKER_W, h)
 	draw_rect(_tracker_rect, Color(0, 0, 0, 0.5))
 	draw_rect(_tracker_rect, Color(1, 0.85, 0.5, 0.25), false, 1.0)
-	draw_string(font, Vector2(x + 12, 32), "OBJECTIVES", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.95, 0.9, 0.6))
-	draw_string(font, Vector2(x + 12, 32), "[%s] more" % _key_hint(), HORIZONTAL_ALIGNMENT_RIGHT, TRACKER_W - 24, 12, DIM_COL)
+	draw_string(font, Vector2(x + 12, top + 20), "OBJECTIVES", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.95, 0.9, 0.6))
+	draw_string(font, Vector2(x + 12, top + 20), "[%s] more" % _key_hint(), HORIZONTAL_ALIGNMENT_RIGHT, TRACKER_W - 24, 12, DIM_COL)
 	var inside := "Inside: %d" % game.intruders_inside() if game.alarm_armed() else "Inside: ?? (alarm off)"
-	draw_string(font, Vector2(x + 12, 50), inside, HORIZONTAL_ALIGNMENT_LEFT, TRACKER_W - 24, 13,
+	draw_string(font, Vector2(x + 12, top + 38), inside, HORIZONTAL_ALIGNMENT_LEFT, TRACKER_W - 24, 13,
 			Color(1, 0.45, 0.4) if game.alarm_armed() and game.intruders_inside() > 0 else DIM_COL)
-	var y := 72.0
+	var y := top + 60.0
 	if items.is_empty():
 		draw_string(font, Vector2(x + 12, y), "All clear. Patrol and listen.", HORIZONTAL_ALIGNMENT_LEFT, TRACKER_W - 24, 15, OK_COL)
 	for i in lines:
@@ -173,7 +179,7 @@ func _draw_tracker(font: Font, size: Vector2) -> void:
 func _draw_panel(font: Font, size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.55))
 	var w := minf(560.0, size.x - 40.0)
-	var h := minf(470.0, size.y - 60.0)
+	var h := minf(560.0, size.y - 30.0)
 	_panel_rect = Rect2((size.x - w) / 2.0, (size.y - h) / 2.0, w, h)
 	var r := _panel_rect
 	draw_rect(r, Color(0.06, 0.07, 0.1, 0.97))
@@ -200,14 +206,22 @@ func _draw_panel(font: Font, size: Vector2) -> void:
 				lines.append(["Nothing has happened yet.", DIM_COL, 14])
 	var y := r.position.y + 80.0
 	for l in lines:
-		if y > r.end.y - 40.0:
+		if y > r.end.y - 100.0:
 			break
 		draw_string(font, Vector2(r.position.x + 22, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, w - 44, l[2], l[1])
 		y += l[2] + 9.0
-	var foot := "Paused - %s to close" % ("tap outside" if GameState.use_touch_controls() else "Tab / Esc")
-	if not GameState.use_touch_controls():
-		foot += ", Left/Right to switch tabs"
-	draw_string(font, Vector2(r.position.x, r.end.y - 16), foot, HORIZONTAL_ALIGNMENT_CENTER, w, 13, DIM_COL)
+	# Resume / Restart / Quit (big enough for thumbs: 52 px tall).
+	_button_rects.clear()
+	var bw := (w - 24.0) / PANEL_BUTTONS.size()
+	for i in PANEL_BUTTONS.size():
+		var br := Rect2(r.position.x + 12 + i * bw, r.end.y - 86, bw - 8, 52)
+		_button_rects.append(br)
+		draw_rect(br, Color(1, 0.85, 0.5, 0.2) if i == 0 else Color(1, 1, 1, 0.08))
+		draw_rect(br, Color(1, 0.85, 0.5, 0.4), false, 1.0)
+		draw_string(font, br.position + Vector2(0, 33), PANEL_BUTTONS[i], HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 18,
+				Color(0.95, 0.9, 0.6) if i == 0 else TODO_COL)
+	var foot := "Paused - %s" % ("tap outside or Back to resume" if GameState.use_touch_controls() else "Tab / Esc to resume, Left/Right to switch tabs")
+	draw_string(font, Vector2(r.position.x, r.end.y - 14), foot, HORIZONTAL_ALIGNMENT_CENTER, w, 13, DIM_COL)
 
 
 func _objective_lines() -> Array:
@@ -271,17 +285,33 @@ func set_expanded(value: bool) -> void:
 	queue_redraw()
 
 
+func _panel_button(i: int) -> void:
+	match i:
+		0:
+			set_expanded(false)
+		1:
+			get_tree().paused = false
+			GameState.start_shift()
+		2:
+			get_tree().paused = false
+			GameState.go_to_menu()
+
+
+## Android Back: opens the pause panel, or closes it if already open.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and game != null and not game.ended:
+		set_expanded(not expanded)
+
+
 func _input(event: InputEvent) -> void:
 	if game == null or game.ended:
 		return
-	if event.is_action_pressed("objectives"):
+	if event.is_action_pressed("objectives") or (event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE):
 		set_expanded(not expanded)
 		get_viewport().set_input_as_handled()
 		return
 	if expanded and event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_ESCAPE:
-				set_expanded(false)
 			KEY_LEFT, KEY_A:
 				tab = posmod(tab - 1, TABS.size())
 			KEY_RIGHT, KEY_D:
@@ -298,6 +328,11 @@ func _input(event: InputEvent) -> void:
 	if pos == Vector2.INF:
 		return
 	if expanded:
+		for i in _button_rects.size():
+			if (_button_rects[i] as Rect2).has_point(pos):
+				get_viewport().set_input_as_handled()
+				_panel_button(i)
+				return
 		for i in _tab_rects.size():
 			if (_tab_rects[i] as Rect2).has_point(pos):
 				tab = i
@@ -329,7 +364,7 @@ func _draw_pointers(font: Font, size: Vector2) -> void:
 			targets.append([it.global_position, "THIEF", Color(1.0, 0.25, 0.25)])
 	var centre := size / 2.0
 	var margin := 34.0
-	var bottom := 30.0 + (260.0 if GameState.use_touch_controls() else 0.0)  # keep clear of touch buttons
+	var bottom := 30.0 + (260.0 if GameState.use_touch_controls() else 0.0) + float(_ins["bottom"])  # keep clear of touch buttons
 	var bounds := Rect2(Vector2(margin, margin + 120.0), size - Vector2(margin * 2, margin + 120.0 + bottom))
 	for t in targets:
 		var screen: Vector2 = xf * (t[0] as Vector2)

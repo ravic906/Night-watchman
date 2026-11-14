@@ -10,6 +10,7 @@ config/description="Survive the night shift: patrol, punch the clocks, keep the 
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
+config/quit_on_go_back=false
 
 [autoload]
 
